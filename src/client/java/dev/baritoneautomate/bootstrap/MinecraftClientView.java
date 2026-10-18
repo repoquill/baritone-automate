@@ -69,4 +69,19 @@ public final class MinecraftClientView implements ClientView {
 	public ActionResult lightNetherPortal() {
 		return ClientWorldActions.lightNetherPortal();
 	}
+
+	@Override
+	public int emptyEndFrames(int radius) {
+		return ClientWorldActions.emptyEndFrames(radius);
+	}
+
+	@Override
+	public BlockPosView findEmptyEndFrame(int radius) {
+		return ClientWorldActions.findEmptyEndFrame(radius);
+	}
+
+	@Override
+	public ActionResult fillEndPortalFrame() {
+		return ClientWorldActions.fillEndPortalFrame();
+	}
 }

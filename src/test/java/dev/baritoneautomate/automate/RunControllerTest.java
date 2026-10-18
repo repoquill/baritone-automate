@@ -199,6 +199,8 @@ class RunControllerTest {
 	@Test
 	void portalDoesNotAdvanceWhenTheObsidianMineFinishesShort() {
 		Harness harness = reach(RunPhase.NETHER_PORTAL);
+		harness.inventory.set("iron_pickaxe", 1);
+		harness.runs.tick();
 		assertTrue(harness.gateway.mines >= 1);
 		int mines = harness.gateway.mines;
 		harness.gateway.completeProcess();
@@ -206,6 +208,58 @@ class RunControllerTest {
 		assertEquals(RunPhase.NETHER_PORTAL, harness.runs.snapshot().phase());
 		assertEquals(mines + 1, harness.gateway.mines);
 		assertEquals(0, harness.world.lights);
+	}
+
+	@Test
+	void skipDiamondFailsObsidianWithoutAPick() {
+		Harness harness = reach(RunPhase.NETHER_PORTAL);
+		int mines = harness.gateway.mines;
+		harness.runs.tick();
+		assertEquals(RunState.FAILED, harness.runs.snapshot().state());
+		assertTrue(harness.runs.snapshot().failureReason().contains("need iron/diamond pickaxe before mining obsidian"));
+		assertEquals(mines, harness.gateway.mines);
+		assertEquals(0, harness.world.lights);
+	}
+
+	@Test
+	void skipDiamondCraftsAnIronPickBeforeMiningObsidian() {
+		Harness harness = reach(RunPhase.NETHER_PORTAL);
+		harness.inventory.set("iron_ingot", 3);
+		harness.inventory.set("stick", 2);
+		int mines = harness.gateway.mines;
+		harness.runs.tick();
+		assertTrue(harness.inventory.count("iron_pickaxe") >= 1);
+		assertTrue(harness.gateway.mines > mines);
+		assertEquals(RunPhase.NETHER_PORTAL, harness.runs.snapshot().phase());
+		assertEquals(RunState.RUNNING, harness.runs.snapshot().state());
+	}
+
+	@Test
+	void skipDiamondUsesADiamondPickWithoutCrafting() {
+		Harness harness = reach(RunPhase.NETHER_PORTAL);
+		harness.inventory.set("diamond_pickaxe", 1);
+		int mines = harness.gateway.mines;
+		harness.runs.tick();
+		assertEquals(1, harness.inventory.count("diamond_pickaxe"));
+		assertEquals(0, harness.inventory.count("iron_pickaxe"));
+		assertTrue(harness.gateway.mines > mines);
+		assertEquals(RunPhase.NETHER_PORTAL, harness.runs.snapshot().phase());
+	}
+
+	@Test
+	void skipDiamondSmeltsRawIronBeforeThePick() {
+		Harness harness = reach(RunPhase.NETHER_PORTAL);
+		harness.inventory.set("raw_iron", 3);
+		harness.inventory.set("coal", 1);
+		harness.inventory.set("stick", 2);
+		int mines = harness.gateway.mines;
+		harness.runs.tick();
+		assertEquals(3, harness.inventory.count("iron_ingot"));
+		assertEquals(mines, harness.gateway.mines);
+		assertEquals(RunPhase.NETHER_PORTAL, harness.runs.snapshot().phase());
+		harness.runs.tick();
+		assertTrue(harness.inventory.count("iron_pickaxe") >= 1);
+		assertTrue(harness.gateway.mines > mines);
 	}
 
 	@Test
@@ -338,6 +392,104 @@ class RunControllerTest {
 		assertEquals(RunPhase.END_APPROACH, harness.runs.snapshot().phase());
 	}
 
+	@Test
+	void enterEndFillsEmptyFramesThenStandsInThePortal() {
+		Harness harness = reach(RunPhase.ENTER_END);
+		harness.world.emptyFrames = 2;
+		harness.world.nearbyBlockId = "end_portal_frame";
+		harness.world.nearbyBlock = harness.world.pos;
+		harness.inventory.set("ender_eye", 2);
+		harness.runs.tick();
+		assertEquals(1, harness.inventory.count("ender_eye"));
+		assertEquals(1, harness.world.emptyFrames);
+		assertEquals(1, harness.world.fills);
+		assertEquals(RunPhase.ENTER_END, harness.runs.snapshot().phase());
+		harness.runs.tick();
+		assertEquals(0, harness.inventory.count("ender_eye"));
+		assertEquals(0, harness.world.emptyFrames);
+		assertEquals("end_portal", harness.world.nearbyBlockId);
+		harness.runs.tick();
+		assertEquals(RunPhase.ENTER_END, harness.runs.snapshot().phase());
+		assertTrue(harness.runs.snapshot().detail().contains("end"));
+		harness.world.dimension = "minecraft:the_end";
+		harness.runs.tick();
+		assertEquals(RunPhase.END_APPROACH, harness.runs.snapshot().phase());
+	}
+
+	@Test
+	void enterEndFailsWhenEyesCannotFillTheFrames() {
+		Harness harness = reach(RunPhase.ENTER_END);
+		harness.world.emptyFrames = 2;
+		harness.world.nearbyBlockId = "end_portal_frame";
+		harness.world.nearbyBlock = harness.world.pos;
+		harness.runs.tick();
+		assertEquals(RunState.FAILED, harness.runs.snapshot().state());
+		assertTrue(harness.runs.snapshot().failureReason().contains("not enough ender eyes"));
+		assertEquals(0, harness.world.fills);
+	}
+
+	@Test
+	void enterEndFailsWhenTheFrameRejectsTheEye() {
+		Harness harness = reach(RunPhase.ENTER_END);
+		harness.world.emptyFrames = 1;
+		harness.world.nearbyBlockId = "end_portal_frame";
+		harness.world.nearbyBlock = harness.world.pos;
+		harness.world.acceptEye = false;
+		harness.inventory.set("ender_eye", 1);
+		for (int i = 0; i < 19; i++) {
+			harness.runs.tick();
+			assertEquals(RunState.RUNNING, harness.runs.snapshot().state());
+		}
+		harness.runs.tick();
+		assertEquals(RunState.FAILED, harness.runs.snapshot().state());
+		assertTrue(harness.runs.snapshot().failureReason().contains("not accepted"));
+		assertEquals(1, harness.inventory.count("ender_eye"));
+	}
+
+	@Test
+	void enterEndFailsWhenTheUseIsBlocked() {
+		Harness harness = reach(RunPhase.ENTER_END);
+		harness.world.emptyFrames = 1;
+		harness.world.nearbyBlockId = "end_portal_frame";
+		harness.world.nearbyBlock = harness.world.pos;
+		harness.world.fill = ActionResult.unavailable("could not place the eye; the frame is blocked");
+		harness.inventory.set("ender_eye", 1);
+		harness.runs.tick();
+		assertEquals(RunState.FAILED, harness.runs.snapshot().state());
+		assertTrue(harness.runs.snapshot().failureReason().contains("blocked"));
+		assertEquals(1, harness.inventory.count("ender_eye"));
+	}
+
+	@Test
+	void enterEndWaitsThenFailsWhenFilledFramesDoNotOpen() {
+		Harness harness = reach(RunPhase.ENTER_END);
+		harness.world.emptyFrames = 0;
+		harness.world.nearbyBlockId = "end_portal_frame";
+		harness.world.nearbyBlock = harness.world.pos;
+		for (int i = 0; i < 40; i++) {
+			harness.runs.tick();
+			assertEquals(RunState.RUNNING, harness.runs.snapshot().state());
+		}
+		harness.runs.tick();
+		assertEquals(RunState.FAILED, harness.runs.snapshot().state());
+		assertTrue(harness.runs.snapshot().failureReason().contains("did not open"));
+	}
+
+	@Test
+	void enterEndPathsTowardADistantEmptyFrame() {
+		Harness harness = reach(RunPhase.ENTER_END);
+		harness.world.emptyFrames = 1;
+		harness.world.nearbyBlockId = "end_portal_frame";
+		harness.world.nearbyBlock = new BlockPosView(0, 64, 0);
+		harness.world.pos = new BlockPosView(100, 64, 100);
+		harness.inventory.set("ender_eye", 1);
+		harness.runs.tick();
+		assertEquals(RunPhase.ENTER_END, harness.runs.snapshot().phase());
+		assertEquals(RunState.RUNNING, harness.runs.snapshot().state());
+		assertEquals(0, harness.world.fills);
+		assertTrue(harness.runs.snapshot().detail().contains("frame"));
+	}
+
 	private static Harness reach(RunPhase target) {
 		Harness harness = Harness.create();
 		harness.runs.setSkipDiamond(true);
@@ -360,6 +512,7 @@ class RunControllerTest {
 		final RunController runs;
 
 		private Harness() {
+			world.stock = inventory;
 			runs = new RunController(
 					gateway,
 					inventory,
@@ -396,9 +549,14 @@ class RunControllerTest {
 		int lights;
 		int uses;
 		int attacks;
+		int emptyFrames;
+		int fills;
+		boolean acceptEye = true;
 		ActionResult light = ActionResult.ok("placing the portal frame");
 		ActionResult used = ActionResult.ok("used");
 		ActionResult attacked = ActionResult.ok("attacked");
+		ActionResult fill = ActionResult.ok("placing an eye of ender");
+		FakeInventory stock;
 
 		@Override
 		public boolean inGame() {
@@ -457,6 +615,40 @@ class RunControllerTest {
 		public ActionResult lightNetherPortal() {
 			lights++;
 			return light;
+		}
+
+		@Override
+		public int emptyEndFrames(int radius) {
+			return emptyFrames;
+		}
+
+		@Override
+		public BlockPosView findEmptyEndFrame(int radius) {
+			if (emptyFrames <= 0) {
+				return null;
+			}
+			if (nearbyBlock != null && nearbyBlockId != null && ItemIds.matches(nearbyBlockId, "end_portal_frame")) {
+				return nearbyBlock;
+			}
+			return pos;
+		}
+
+		@Override
+		public ActionResult fillEndPortalFrame() {
+			fills++;
+			if (fill.status() != ActionResult.Status.OK) {
+				return fill;
+			}
+			if (!acceptEye || stock == null || stock.count("ender_eye") <= 0 || emptyFrames <= 0) {
+				return fill;
+			}
+			stock.set("ender_eye", stock.count("ender_eye") - 1);
+			emptyFrames--;
+			if (emptyFrames == 0) {
+				nearbyBlockId = "end_portal";
+				nearbyBlock = pos;
+			}
+			return fill;
 		}
 	}
 

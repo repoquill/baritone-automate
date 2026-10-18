@@ -31,4 +31,16 @@ public interface ClientView {
 	 * Does not mean the portal is lit yet.
 	 */
 	ActionResult lightNetherPortal();
+
+	/** End portal frames in range whose {@code eye} property is still false. */
+	int emptyEndFrames(int radius);
+
+	/** Closest empty end portal frame inside {@code radius}, or null. */
+	BlockPosView findEmptyEndFrame(int radius);
+
+	/**
+	 * Use one eye of ender on the closest empty frame within reach.
+	 * OK means the use was accepted, not that every frame is filled.
+	 */
+	ActionResult fillEndPortalFrame();
 }

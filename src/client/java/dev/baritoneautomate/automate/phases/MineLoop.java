@@ -27,6 +27,10 @@ final class MineLoop {
 		error = null;
 	}
 
+	boolean started() {
+		return tracked >= 0L || error != null;
+	}
+
 	void start(PhaseContext context, int quantity, List<String> blockIds) {
 		error = null;
 		tracked = -1L;

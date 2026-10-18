@@ -20,8 +20,10 @@ import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.InteractionResult;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.EndPortalFrameBlock;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.BlockHitResult;
@@ -100,6 +102,47 @@ public final class ClientWorldActions {
 		}
 		minecraft.gameMode.attack(player, entity);
 		return ActionResult.ok("attacked " + entityId);
+	}
+
+	public static int emptyEndFrames(int radius) {
+		return scanEndFrames(radius).empty;
+	}
+
+	public static BlockPosView findEmptyEndFrame(int radius) {
+		return scanEndFrames(radius).nearest;
+	}
+
+	/**
+	 * Vanilla eye insert: select an eye of ender and {@code useItemOn} an
+	 * {@code end_portal_frame} whose {@code HAS_EYE} is still false.
+	 * {@code consumesAction()} false means the frame did not take the eye.
+	 */
+	public static ActionResult fillEndPortalFrame() {
+		Minecraft minecraft = Minecraft.getInstance();
+		LocalPlayer player = player();
+		if (player == null || player.level() == null || minecraft.gameMode == null) {
+			return ActionResult.unavailable("no world");
+		}
+		BlockPos frame = nearestEmptyFrame(player, 4.5);
+		if (frame == null) {
+			if (emptyEndFrames(MAX_BLOCK_RADIUS) > 0) {
+				return ActionResult.pending("moving to an empty end portal frame");
+			}
+			return ActionResult.unavailable("no empty end portal frame in reach");
+		}
+		ActionResult eye = ensureSelected(player, "not enough ender eyes to fill the portal frames", "ender_eye");
+		if (eye.status() != ActionResult.Status.OK) {
+			return eye;
+		}
+		Vec3 hit = Vec3.atCenterOf(frame);
+		InteractionResult used = minecraft.gameMode.useItemOn(
+				player,
+				InteractionHand.MAIN_HAND,
+				new BlockHitResult(hit, Direction.UP, frame, false));
+		if (!used.consumesAction()) {
+			return ActionResult.unavailable("ender eye was not accepted by the frame");
+		}
+		return ActionResult.ok("placing an eye of ender");
 	}
 
 	public static ActionResult lightNetherPortal() {
@@ -328,6 +371,64 @@ public final class ClientWorldActions {
 			return null;
 		}
 		return BuiltInRegistries.BLOCK.getOptional(id).orElse(null);
+	}
+
+	private static FrameScan scanEndFrames(int radius) {
+		LocalPlayer player = player();
+		if (player == null || player.level() == null) {
+			return new FrameScan(null, 0);
+		}
+		int span = Math.max(1, Math.min(radius, MAX_BLOCK_RADIUS));
+		BlockPos origin = player.blockPosition();
+		BlockPosView nearest = null;
+		double best = Double.MAX_VALUE;
+		int empty = 0;
+		for (int dy = -span; dy <= span; dy++) {
+			for (int dx = -span; dx <= span; dx++) {
+				for (int dz = -span; dz <= span; dz++) {
+					BlockPos pos = origin.offset(dx, dy, dz);
+					if (!emptyFrame(player, pos)) {
+						continue;
+					}
+					empty++;
+					double distance = origin.distSqr(pos);
+					if (distance < best) {
+						best = distance;
+						nearest = new BlockPosView(pos.getX(), pos.getY(), pos.getZ());
+					}
+				}
+			}
+		}
+		return new FrameScan(nearest, empty);
+	}
+
+	private static BlockPos nearestEmptyFrame(LocalPlayer player, double reach) {
+		int span = (int) Math.ceil(reach);
+		BlockPos origin = player.blockPosition();
+		BlockPos nearest = null;
+		double best = reach * reach;
+		for (int dy = -span; dy <= span; dy++) {
+			for (int dx = -span; dx <= span; dx++) {
+				for (int dz = -span; dz <= span; dz++) {
+					BlockPos pos = origin.offset(dx, dy, dz);
+					double distance = origin.distSqr(pos);
+					if (distance > best || !emptyFrame(player, pos)) {
+						continue;
+					}
+					best = distance;
+					nearest = pos;
+				}
+			}
+		}
+		return nearest;
+	}
+
+	private static boolean emptyFrame(LocalPlayer player, BlockPos pos) {
+		BlockState state = player.level().getBlockState(pos);
+		return state.getBlock() == Blocks.END_PORTAL_FRAME && !state.getValue(EndPortalFrameBlock.HAS_EYE);
+	}
+
+	private record FrameScan(BlockPosView nearest, int empty) {
 	}
 
 	private static LocalPlayer player() {
