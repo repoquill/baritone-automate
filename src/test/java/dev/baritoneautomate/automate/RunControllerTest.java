@@ -91,6 +91,131 @@ class RunControllerTest {
 	}
 
 	@Test
+	void fourLogsReachIronAndStayRunning() {
+		Harness harness = Harness.create();
+		harness.inventory.set("oak_log", 4);
+		harness.runs.start();
+		harness.runs.tick();
+		assertEquals(RunPhase.EARLY_WOOD, harness.runs.snapshot().phase());
+		harness.runs.tick();
+		assertEquals(RunPhase.IRON, harness.runs.snapshot().phase());
+		for (int i = 0; i < 3; i++) {
+			harness.runs.tick();
+			assertEquals(RunState.RUNNING, harness.runs.snapshot().state());
+			assertEquals("", harness.runs.snapshot().failureReason());
+		}
+		assertEquals(RunPhase.IRON, harness.runs.snapshot().phase());
+		assertTrue(harness.inventory.count("wooden_pickaxe") >= 1);
+		assertFalse(harness.gateway.minedIronOre());
+	}
+
+	@Test
+	void planksAloneStayInEarlyWood() {
+		Harness harness = Harness.create();
+		harness.inventory.set("oak_planks", 4);
+		harness.runs.start();
+		harness.runs.tick();
+		assertEquals(RunPhase.EARLY_WOOD, harness.runs.snapshot().phase());
+		harness.runs.tick();
+		assertEquals(RunPhase.EARLY_WOOD, harness.runs.snapshot().phase());
+		assertEquals(RunState.RUNNING, harness.runs.snapshot().state());
+		assertEquals(0, harness.inventory.count("wooden_pickaxe"));
+		assertTrue(harness.gateway.mines >= 1);
+	}
+
+	@Test
+	void threeLogsStayInEarlyWood() {
+		Harness harness = Harness.create();
+		harness.inventory.set("oak_log", 3);
+		harness.runs.start();
+		harness.runs.tick();
+		harness.runs.tick();
+		assertEquals(RunPhase.EARLY_WOOD, harness.runs.snapshot().phase());
+		assertEquals(RunState.RUNNING, harness.runs.snapshot().state());
+	}
+
+	@Test
+	void planksSticksAndTableLeaveWood() {
+		Harness harness = Harness.create();
+		harness.inventory.set("oak_planks", 5);
+		harness.inventory.set("stick", 2);
+		harness.inventory.set("crafting_table", 1);
+		harness.runs.start();
+		harness.runs.tick();
+		assertEquals(RunPhase.EARLY_WOOD, harness.runs.snapshot().phase());
+		assertEquals(0, harness.gateway.mines);
+		harness.runs.tick();
+		assertEquals(RunPhase.IRON, harness.runs.snapshot().phase());
+		assertEquals(RunState.RUNNING, harness.runs.snapshot().state());
+	}
+
+	@Test
+	void heldWoodenPickLeavesWood() {
+		Harness harness = Harness.create();
+		harness.inventory.set("wooden_pickaxe", 1);
+		harness.runs.start();
+		harness.runs.tick();
+		harness.runs.tick();
+		assertEquals(RunPhase.IRON, harness.runs.snapshot().phase());
+		assertEquals(RunState.RUNNING, harness.runs.snapshot().state());
+		assertFalse(harness.gateway.minedIronOre());
+	}
+
+	@Test
+	void planksAfterWoodDoNotFailTheIronPhase() {
+		Harness harness = Harness.create();
+		harness.inventory.set("oak_log", 4);
+		harness.runs.start();
+		harness.runs.tick();
+		harness.runs.tick();
+		assertEquals(RunPhase.IRON, harness.runs.snapshot().phase());
+		harness.inventory.set("oak_log", 0);
+		harness.inventory.set("oak_planks", 4);
+		harness.runs.tick();
+		assertEquals(RunPhase.IRON, harness.runs.snapshot().phase());
+		assertEquals(RunState.RUNNING, harness.runs.snapshot().state());
+		assertEquals("", harness.runs.snapshot().failureReason());
+		assertTrue(harness.runs.snapshot().detail().contains("wooden pickaxe")
+				|| harness.runs.snapshot().detail().contains("log"));
+		assertFalse(harness.gateway.minedIronOre());
+		assertTrue(harness.gateway.minedLogs());
+	}
+
+	@Test
+	void woodenPickCraftMissingStaysRunning() {
+		Harness harness = reachIronWithFourLogs();
+		harness.inventory.craftResult = ActionResult.missing("missing planks");
+		harness.runs.tick();
+		assertEquals(RunPhase.IRON, harness.runs.snapshot().phase());
+		assertEquals(RunState.RUNNING, harness.runs.snapshot().state());
+		assertTrue(harness.runs.snapshot().detail().contains("missing"));
+		harness.runs.tick();
+		assertEquals(RunState.RUNNING, harness.runs.snapshot().state());
+		assertEquals("", harness.runs.snapshot().failureReason());
+		assertFalse(harness.gateway.minedIronOre());
+	}
+
+	@Test
+	void woodenPickCraftUnavailableStaysRunning() {
+		Harness harness = reachIronWithFourLogs();
+		harness.inventory.craftResult = ActionResult.unavailable("no crafting table nearby");
+		harness.runs.tick();
+		assertEquals(RunPhase.IRON, harness.runs.snapshot().phase());
+		assertEquals(RunState.RUNNING, harness.runs.snapshot().state());
+		assertTrue(harness.runs.snapshot().detail().contains("crafting table"));
+		assertEquals("", harness.runs.snapshot().failureReason());
+	}
+
+	@Test
+	void woodenPickCraftOkWithoutTheItemStillFails() {
+		Harness harness = reachIronWithFourLogs();
+		harness.inventory.craftResult = ActionResult.ok("crafted wooden_pickaxe");
+		harness.runs.tick();
+		assertEquals(RunState.FAILED, harness.runs.snapshot().state());
+		assertTrue(harness.runs.snapshot().failureReason().contains("inventory did not change"));
+	}
+
+	@Test
 	void skipDiamondJumpsToThePortal() {
 		Harness harness = Harness.create();
 		harness.runs.setSkipDiamond(true);
@@ -490,6 +615,17 @@ class RunControllerTest {
 		assertTrue(harness.runs.snapshot().detail().contains("frame"));
 	}
 
+	private static Harness reachIronWithFourLogs() {
+		Harness harness = Harness.create();
+		harness.inventory.set("oak_log", 4);
+		harness.runs.start();
+		harness.runs.tick();
+		harness.runs.tick();
+		assertEquals(RunPhase.IRON, harness.runs.snapshot().phase());
+		assertEquals(RunState.RUNNING, harness.runs.snapshot().state());
+		return harness;
+	}
+
 	private static Harness reach(RunPhase target) {
 		Harness harness = Harness.create();
 		harness.runs.setSkipDiamond(true);
@@ -654,6 +790,7 @@ class RunControllerTest {
 
 	private static final class FakeInventory implements InventoryAccess {
 		private final Map<String, Integer> counts = new HashMap<>();
+		ActionResult craftResult;
 
 		void set(String id, int count) {
 			counts.put(ItemIds.normalize(id), count);
@@ -692,6 +829,9 @@ class RunControllerTest {
 
 		@Override
 		public ActionResult craft(String outputItemId, int count) {
+			if (craftResult != null) {
+				return craftResult;
+			}
 			return dev.baritoneautomate.inventory.CraftRecipes.craft(counts, outputItemId, count, true);
 		}
 
@@ -747,6 +887,7 @@ class RunControllerTest {
 		boolean present = true;
 		int mines;
 		int explores;
+		final List<List<String>> mined = new ArrayList<>();
 		int forceCancels;
 		int cancels;
 		long generation;
@@ -816,7 +957,16 @@ class RunControllerTest {
 		@Override
 		public GatewayStatus mine(int quantity, List<String> blockIds) {
 			mines++;
+			mined.add(List.copyOf(blockIds));
 			return start(ProcessKind.MINE, "mine");
+		}
+
+		boolean minedIronOre() {
+			return mined.stream().anyMatch(blocks -> blocks.contains("iron_ore") || blocks.contains("deepslate_iron_ore"));
+		}
+
+		boolean minedLogs() {
+			return mined.stream().anyMatch(blocks -> blocks.contains("oak_log"));
 		}
 
 		@Override

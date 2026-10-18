@@ -4,21 +4,11 @@ import dev.baritoneautomate.automate.PhaseContext;
 import dev.baritoneautomate.automate.PhaseHandler;
 import dev.baritoneautomate.automate.PhaseTick;
 import dev.baritoneautomate.automate.RunPhase;
-import dev.baritoneautomate.inventory.ItemIds;
 import java.util.List;
 
 public final class EarlyPhases {
 	private static final long THREE_MINUTES = 3 * 60_000L;
 	private static final long TEN_MINUTES = 10 * 60_000L;
-	private static final List<String> LOGS = List.of(
-			"oak_log",
-			"spruce_log",
-			"birch_log",
-			"jungle_log",
-			"acacia_log",
-			"dark_oak_log",
-			"mangrove_log",
-			"cherry_log");
 
 	private EarlyPhases() {
 	}
@@ -63,21 +53,14 @@ public final class EarlyPhases {
 		return new GatherPhase(
 				RunPhase.EARLY_WOOD,
 				16,
-				LOGS,
-				context -> logCount(context) >= 4,
+				Supply.logBlocks(),
+				context -> Supply.woodenPickReady(context.inventory()),
 				"mining logs",
-				"logs gathered",
+				"wooden pick ready",
 				THREE_MINUTES);
 	}
 
 	private static PhaseHandler netherPortal() {
 		return new NetherPortalPhase(TEN_MINUTES);
-	}
-
-	private static int logCount(PhaseContext context) {
-		return context.inventory().countWhere(id -> {
-			String path = ItemIds.path(id);
-			return path.endsWith("_log") || path.endsWith("_stem");
-		});
 	}
 }

@@ -2,6 +2,7 @@ package dev.baritoneautomate.automate.phases;
 
 import dev.baritoneautomate.automate.PhaseContext;
 import dev.baritoneautomate.automate.PhaseHandler;
+import dev.baritoneautomate.automate.PhaseSignal;
 import dev.baritoneautomate.automate.PhaseTick;
 import dev.baritoneautomate.automate.RunPhase;
 import java.util.List;
@@ -14,6 +15,7 @@ final class IronPhase implements PhaseHandler {
 	private static final long TIMEOUT = 8 * 60_000L;
 	private final MineLoop iron = new MineLoop(3);
 	private final MineLoop cobble = new MineLoop(3);
+	private final MineLoop wood = new MineLoop(3);
 
 	@Override
 	public RunPhase phase() {
@@ -24,6 +26,7 @@ final class IronPhase implements PhaseHandler {
 	public void onEnter(PhaseContext context) {
 		iron.reset();
 		cobble.reset();
+		wood.reset();
 		if (Supply.hasPick(context.inventory(), "iron")) {
 			return;
 		}
@@ -46,7 +49,13 @@ final class IronPhase implements PhaseHandler {
 			return PhaseTick.advance("iron pick ready");
 		}
 		if (!Supply.hasPick(context.inventory(), "wooden")) {
-			return Supply.craft(context, "wooden_pickaxe");
+			if (Supply.previewWoodenPick(context.inventory())) {
+				return Supply.craft(context, "wooden_pickaxe", true);
+			}
+			if (!wood.started()) {
+				wood.start(context, 4, Supply.logBlocks());
+			}
+			return wood.afterShortfall(context, 4, Supply.logBlocks(), "gathering logs for a wooden pickaxe");
 		}
 		if (!Supply.hasPick(context.inventory(), "stone")) {
 			int loose = context.inventory().count("cobblestone") + context.inventory().count("cobbled_deepslate");
@@ -63,7 +72,7 @@ final class IronPhase implements PhaseHandler {
 			return Supply.smelt(context, "raw_iron", 3 - ingots);
 		}
 		PhaseTick crafted = Supply.craft(context, "iron_pickaxe");
-		if (crafted.signal() != dev.baritoneautomate.automate.PhaseSignal.FAIL
+		if (crafted.signal() != PhaseSignal.FAIL
 				&& Supply.hasPick(context.inventory(), "iron")) {
 			return PhaseTick.advance("iron pick ready");
 		}
