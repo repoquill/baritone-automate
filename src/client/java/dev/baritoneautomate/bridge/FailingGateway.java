@@ -65,6 +65,11 @@ abstract class FailingGateway implements BaritoneGateway {
 
 	@Override
 	public GatewayStatus explore(int x, int z) {
+		return explore(x, z, 0);
+	}
+
+	@Override
+	public GatewayStatus explore(int x, int z, int rangeBlocks) {
 		return fail();
 	}
 

@@ -6,8 +6,10 @@ import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.network.chat.Component;
 
 /**
- * Explore uses {@code BaritoneGateway.explore(x, z)}. That method has no range argument,
- * so the range field is kept on screen and explained instead of being sent.
+ * Explore center plus a block radius. The radius goes to
+ * {@link dev.baritoneautomate.bridge.BaritoneGateway#explore(int, int, int)}.
+ * Baritone's explore call itself only has a center; the gateway turns the radius
+ * into an inverted chunk filter.
  */
 public final class ExplorePanel implements ControlPanel {
 	@Override
@@ -60,6 +62,13 @@ public final class ExplorePanel implements ControlPanel {
 				return;
 			}
 		}
-		screen.report(screen.gateway().explore(x, z));
+		int range;
+		try {
+			range = Integer.parseInt(screen.exploreRange.trim());
+		} catch (NumberFormatException exception) {
+			screen.report(false, Component.translatable("screen.baritone-automate.bad_number").getString());
+			return;
+		}
+		screen.report(screen.gateway().explore(x, z, range));
 	}
 }

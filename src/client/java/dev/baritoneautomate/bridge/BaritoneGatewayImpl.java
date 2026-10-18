@@ -18,6 +18,9 @@ import baritone.api.process.PathingCommand;
 import baritone.api.process.PathingCommandType;
 import baritone.api.utils.BetterBlockPos;
 import baritone.api.utils.SettingsUtil;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashSet;
@@ -188,10 +191,37 @@ final class BaritoneGatewayImpl implements BaritoneGateway {
 
 	@Override
 	public GatewayStatus explore(int x, int z) {
+		return explore(x, z, 0);
+	}
+
+	/**
+	 * {@code IExploreProcess.explore(int, int)} only takes a center. A positive range is
+	 * written as {@code [{"x":chunkX,"z":chunkZ},...]} and applied with
+	 * {@code applyJsonFilter(path, true)}, which treats listed chunks as still unexplored
+	 * and every other chunk as already explored. Range {@code 0} writes {@code []} with
+	 * invert false so a previous radius does not stick.
+	 */
+	@Override
+	public GatewayStatus explore(int x, int z, int rangeBlocks) {
+		if (rangeBlocks < 0) {
+			return GatewayStatus.fail("explore range must be zero or positive");
+		}
+		if (rangeBlocks > ExploreRange.MAX_BLOCKS) {
+			return GatewayStatus.fail("explore range is too large");
+		}
 		return call(baritone -> {
-			baritone.getExploreProcess().explore(x, z);
-			begin(ProcessKind.EXPLORE, "explore " + x + " " + z, null);
-			return GatewayStatus.ok("exploring");
+			try {
+				Path filter = writeExploreFilter(x, z, rangeBlocks);
+				baritone.getExploreProcess().explore(x, z);
+				baritone.getExploreProcess().applyJsonFilter(filter, rangeBlocks > 0);
+			} catch (Throwable failure) {
+				return GatewayStatus.fail(message(failure));
+			}
+			String text = rangeBlocks > 0
+					? "explore " + x + " " + z + " radius " + rangeBlocks
+					: "explore " + x + " " + z;
+			begin(ProcessKind.EXPLORE, text, null);
+			return GatewayStatus.ok(text);
 		});
 	}
 
@@ -632,7 +662,7 @@ final class BaritoneGatewayImpl implements BaritoneGateway {
 				safeText(() -> SettingsUtil.settingDefaultToString(setting), setting.defaultValue),
 				setting.isJavaOnly(),
 				modified,
-				"",
+				SettingDescriptions.of(setting.getName()),
 				SettingEnums.names(valueClass));
 	}
 
@@ -643,6 +673,15 @@ final class BaritoneGatewayImpl implements BaritoneGateway {
 		} catch (Throwable ignored) {
 			return String.valueOf(fallback);
 		}
+	}
+
+	private static Path writeExploreFilter(int x, int z, int rangeBlocks) throws IOException {
+		Path dir = Path.of(System.getProperty("java.io.tmpdir"), "baritone-automate");
+		Files.createDirectories(dir);
+		Path file = dir.resolve("explore-filter.json");
+		String json = rangeBlocks > 0 ? ExploreRange.json(x, z, rangeBlocks) : "[]";
+		Files.writeString(file, json);
+		return file;
 	}
 
 	private static String[] blockNames(List<String> blockIds) {

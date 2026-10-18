@@ -324,7 +324,7 @@ public final class SettingsScreen extends Screen {
 			String star = view.modified() ? "* " : "";
 			String javaOnly = view.javaOnly() ? " java " : " ";
 			int color = view.modified() ? 0xFFFFE08A : 0xFFE4E4E4;
-			String hint = HINTS.getOrDefault(view.name(), view.kind().name());
+			String hint = rowExplanation(view);
 			int resetW = 46;
 			int editorW = Math.min(150, Math.max(70, this.width / 4));
 			int editorX = this.width - 12 - resetW - editorW;
@@ -376,8 +376,20 @@ public final class SettingsScreen extends Screen {
 				.toLowerCase(Locale.ROOT);
 	}
 
+	private static String rowExplanation(SettingView view) {
+		String chinese = HINTS.get(view.name());
+		if (chinese != null && !chinese.isBlank()) {
+			return chinese;
+		}
+		return view.description();
+	}
+
 	private Tooltip tooltip(SettingView view) {
-		String hint = view.description().isBlank() ? HINTS.getOrDefault(view.name(), "") : view.description();
+		String hint = view.description();
+		String chinese = HINTS.get(view.name());
+		if (chinese != null && !chinese.isBlank() && !hint.contains(chinese)) {
+			hint = chinese + "\n" + hint;
+		}
 		if (!view.enumValues().isEmpty()) {
 			hint = hint + "\n" + String.join(", ", view.enumValues());
 		}

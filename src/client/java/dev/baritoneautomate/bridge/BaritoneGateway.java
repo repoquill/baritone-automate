@@ -37,7 +37,15 @@ public interface BaritoneGateway {
 
 	GatewayStatus mine(int quantity, List<String> blockIds);
 
+	/** Explore without a radius. Same as {@link #explore(int, int, int)} with range {@code 0}. */
 	GatewayStatus explore(int x, int z);
+
+	/**
+	 * Explore around {@code x,z}. {@code rangeBlocks <= 0} does not limit distance.
+	 * A positive range is sent as an inverted chunk filter because
+	 * {@code IExploreProcess.explore(int, int)} has no radius argument.
+	 */
+	GatewayStatus explore(int x, int z, int rangeBlocks);
 
 	/** {@code name} blank means any other player. */
 	GatewayStatus followPlayer(String name);

@@ -61,7 +61,7 @@
 	"screen.baritone-automate.explore.feet_off": "Center: custom",
 	"screen.baritone-automate.explore.range": "Range",
 	"screen.baritone-automate.explore.start": "Start explore",
-	"screen.baritone-automate.explore.note": "Gateway.explore only accepts a center X/Z. The range field is kept on screen and is not sent.",
+	"screen.baritone-automate.explore.note": "Range is a block radius. Baritone explore only takes a center; chunks inside the radius are sent as an inverted explore filter, and chunks outside count as already explored. 0 means no limit. Maximum 2048.",
 	"screen.baritone-automate.follow.mode_player": "Follow player",
 	"screen.baritone-automate.follow.mode_entity": "Follow entity",
 	"screen.baritone-automate.follow.name": "Player",

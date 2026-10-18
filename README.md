@@ -59,7 +59,7 @@ Baritone 是 LGPL-3.0，本模组源码是 MIT。另装、不打包，见 `NOTIC
 - 页签：控制、目标、挖掘、探索、跟随、路点、通关。
 - 通关页的「一键通关（至屠龙）」走 `RunController.start()`。失败后可以「继续」。取消会停战斗、`forceCancel`，然后回到 `IDLE`。
 - Baritone 在 `fabric.mod.json` 里是 `suggests`，不是硬依赖。没装时模组仍会加载，`isBaritonePresent()` 为 false，日志写明寻路不可用，操作台可以出横幅。横幅同样覆盖「类在，但 Provider 还没就绪」。
-- 探索页有范围框。`BaritoneGateway.explore` 只有中心 X/Z，范围不会发出去。
+- 探索页的范围是方块半径。Baritone 的 `explore(x, z)` 没有半径参数，Gateway 会把范围内的区块写成反向 explore 过滤再下发。填 0 表示不限制。
 - 设置页从底栏打开。装了 Mod Menu 时，模组列表里的配置按钮也会打开设置。没装 Mod Menu 不影响启动。
 - 设置没有描述字段。搜索匹配 id、类型、当前值和一小张常用项提示（`allowBreak` 等）。全部重置是逐条 `resetSetting`。布尔和数字会立刻提交；字符串、枚举、列表按回车或「应用」。
 - HUD 在通关不是空闲、正在寻路、或有进程名时出现在左上角。打开任何界面时先藏起来，避免挡住聊天。

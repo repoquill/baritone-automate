@@ -61,7 +61,7 @@
 	"screen.baritone-automate.explore.feet_off": "中心：自定义",
 	"screen.baritone-automate.explore.range": "范围",
 	"screen.baritone-automate.explore.start": "开始探索",
-	"screen.baritone-automate.explore.note": "Gateway.explore 只接收中心 X/Z，没有范围参数。范围框会留下来，但不会发给 Baritone。",
+	"screen.baritone-automate.explore.note": "范围是方块半径。Baritone 的 explore 只有中心，没有半径参数；开始时会把范围内的区块写成反向探索过滤，范围外视为已探索。填 0 表示不限制，最大 2048。",
 	"screen.baritone-automate.follow.mode_player": "跟随玩家",
 	"screen.baritone-automate.follow.mode_entity": "跟随实体",
 	"screen.baritone-automate.follow.name": "玩家名",
