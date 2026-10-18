@@ -1,8 +1,6 @@
 # Baritone Automate
 
-Minecraft **26.3** Fabric **客户端**模组。另装 Baritone，由本模组编排寻路 Process、薄物品栏和简易末地战斗，演示「进末地并打龙」的阶段骨架。
-
-本仓库这一版只做**后端**：`bootstrap`、`bridge`、`automate`、`combat`、`inventory`。操作台、Settings、HUD、热键打开的 Screen 由前端接手，对应包 `dev.baritoneautomate.ui` 和 `dev.baritoneautomate.hud` 是空的。
+Minecraft **26.3** Fabric **客户端**模组。另装 Baritone，由本模组编排寻路 Process、薄物品栏和简易末地战斗，演示「进末地并打龙」的阶段骨架。操作台、设置和 HUD 都在客户端里。
 
 范围是单机和局域网「对局域网开放」。没有公共服反作弊、没有远端 API、没有自定义玩法包。
 
@@ -42,15 +40,29 @@ Baritone 是 LGPL-3.0，本模组源码是 MIT。另装、不打包，见 `NOTIC
 - 显示名：Baritone Automate
 - 客户端入口：`dev.baritoneautomate.bootstrap.BaritoneAutomateClient`
 
-前端只拿这些访问器，不要 `import baritone.api`：
+界面只拿这些访问器，不要 `import baritone.api`：
 
 - `BaritoneAutomateClient.gateway()`
 - `BaritoneAutomateClient.runs()`
 - `BaritoneAutomateClient.combat()`
 - `BaritoneAutomateClient.inventory()`
-- `BaritoneAutomateClient.keys().setOpenControlsHook(...)` 接操作台 Screen
+- `BaritoneAutomateClient.keys().setOpenControlsHook(...)` 打开操作台
 
-热键已注册（控件里可改）：`K` 打开操作台（仅回调）、`]` 暂停/继续、`\` 取消、`End` 强制取消。取消走同一条序列：停战斗、`forceCancel`、状态 `CANCELLED`。
+热键已注册（控件里可改）：`K` 打开操作台、`]` 暂停/继续通关、`\` 取消通关、`End` 强制取消通关。取消走同一条序列：停战斗、`forceCancel`、状态 `CANCELLED`。暂停和取消键没有被界面拆掉。
+
+## 操作台
+
+进世界后按 `K`。操作台不暂停游戏。
+
+- 顶栏是进程、是否在寻路、ETA。ETA 来自 Baritone 的估算 tick（20 tick 记 1 秒），文案带「约」。
+- 底栏：暂停 / 继续 / 取消 / 强取，外加设置。强取会再确认一次。这四个按钮打的是 Baritone 进程，不是通关状态机。
+- 页签：控制、目标、挖掘、探索、跟随、路点、通关。
+- 通关页的「一键通关（至屠龙）」走 `RunController.start()`。失败后可以「继续」。`回到空闲` 调用 `reset()`，因为取消会停在 `CANCELLED`。
+- Baritone 的 Provider 还没就绪时，顶栏出横幅，寻路按钮停用。`fabric.mod.json` 硬依赖 `baritone`，缺模组时本模组通常根本不会加载；横幅覆盖的是「已加载但 Provider 失败」。
+- 探索页有范围框。`BaritoneGateway.explore` 只有中心 X/Z，范围不会发出去。
+- 设置页从底栏打开。装了 Mod Menu 时，模组列表里的配置按钮也会打开设置。没装 Mod Menu 不影响启动。
+- 设置没有描述字段。搜索匹配 id、类型、当前值和一小张常用项提示（`allowBreak` 等）。全部重置是逐条 `resetSetting`。布尔和数字会立刻提交；字符串、枚举、列表按回车或「应用」。
+- HUD 在通关不是空闲、正在寻路、或有进程名时出现在左上角。打开任何界面时先藏起来，避免挡住聊天。
 
 ## 已完成的后端
 

@@ -12,6 +12,7 @@ base {
 
 repositories {
 	mavenCentral()
+	maven { url = 'https://maven.terraformersmc.com/releases/' }
 	// Local self-built Baritone API. Not Maven Central, and not a GitHub Release jar.
 	flatDir {
 		dirs 'libs'
@@ -37,6 +38,10 @@ dependencies {
 	// compileOnly + files(): the API is on the compile classpath only.
 	// The published mod jar must not nest Baritone; players install Baritone separately.
 	compileOnly files('libs/baritone-api-fabric-1.20.0.jar')
+
+	// Optional. compileOnly so the published jar does not nest Mod Menu.
+	// The modmenu entrypoint is not loaded unless Mod Menu is installed.
+	compileOnly 'com.terraformersmc:modmenu:21.0.0'
 
 	testImplementation platform('org.junit:junit-bom:5.12.2')
 	testImplementation 'org.junit.jupiter:junit-jupiter'

@@ -12,7 +12,13 @@
 	"entrypoints": {
 		"client": [
 			"dev.baritoneautomate.bootstrap.BaritoneAutomateClient"
+		],
+		"modmenu": [
+			"dev.baritoneautomate.ui.common.AutomateModMenu"
 		]
+	},
+	"suggests": {
+		"modmenu": "*"
 	},
 	"depends": {
 		"fabricloader": ">=0.19.5",

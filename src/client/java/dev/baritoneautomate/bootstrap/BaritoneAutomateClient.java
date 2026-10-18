@@ -8,13 +8,14 @@ import dev.baritoneautomate.combat.CombatController;
 import dev.baritoneautomate.combat.CombatSession;
 import dev.baritoneautomate.inventory.InventoryAccess;
 import dev.baritoneautomate.inventory.PlayerInventoryAccess;
+import dev.baritoneautomate.ui.common.ModScreens;
 import net.fabricmc.api.ClientModInitializer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Client entry. UI screens are not created here.
- * Frontend code should take {@link #gateway()}, {@link #runs()}, {@link #combat()}, and {@link #inventory()}.
+ * Client entry. Screens and the HUD are installed from here via {@link ModScreens},
+ * which only attaches to the existing key hook and does not replace pause or cancel.
  */
 public final class BaritoneAutomateClient implements ClientModInitializer {
 	public static final Logger LOGGER = LoggerFactory.getLogger("baritone-automate");
@@ -45,10 +46,11 @@ public final class BaritoneAutomateClient implements ClientModInitializer {
 		keys = new KeybindStubs(runs, LOGGER);
 		keys.register();
 		ClientLifecycle.install(gateway, runs, combat, keys, LOGGER);
+		ModScreens.install();
 		if (!gateway.isBaritonePresent()) {
 			LOGGER.warn("Baritone is not ready yet. The gateway will keep trying; pathing calls fail until it is.");
 		}
-		LOGGER.info("Baritone Automate backend ready. Control screen, settings, and HUD are left to the UI teammate.");
+		LOGGER.info("Baritone Automate ready. Press K to open the control screen.");
 	}
 
 	public static BaritoneGateway gateway() {
