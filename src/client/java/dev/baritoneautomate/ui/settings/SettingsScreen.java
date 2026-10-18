@@ -22,10 +22,9 @@ import net.minecraft.network.chat.Component;
 
 /**
  * Edits Baritone settings through {@link BaritoneGateway#setSetting(String, String)}
- * and {@link BaritoneGateway#resetSetting(String)}. There is no description on
- * {@link SettingView}; search uses the id, kind, serialized value, and a small hint
- * table for the common ids. Reset-all walks every setting because the gateway has
- * no bulk reset.
+ * and {@link BaritoneGateway#resetSetting(String)}. Reset-all calls
+ * {@link BaritoneGateway#resetAllSettings()} first and walks settings only if that fails.
+ * Enum rows cycle {@link SettingView#enumValues()} when the gateway supplies them.
  */
 public final class SettingsScreen extends Screen {
 	static final List<String> QUICK = List.of(
@@ -155,6 +154,16 @@ public final class SettingsScreen extends Screen {
 				.build();
 		reset.setTooltip(tip);
 		addRenderableWidget(reset);
+		if (view.kind() == SettingKind.ENUM && !view.enumValues().isEmpty()) {
+			List<String> choices = view.enumValues();
+			String name = view.name();
+			Button cycle = Button.builder(Component.literal(view.value()), button -> cycleEnum(name, choices))
+					.bounds(editorX, y, editorW, 20)
+					.build();
+			cycle.setTooltip(tip);
+			addRenderableWidget(cycle);
+			return;
+		}
 		if (view.kind() == SettingKind.BOOLEAN) {
 			boolean on = isTrue(view.value());
 			Button toggle = Button.builder(Component.translatable(on
@@ -206,6 +215,16 @@ public final class SettingsScreen extends Screen {
 		addRenderableWidget(box);
 	}
 
+	private void cycleEnum(String name, List<String> choices) {
+		SettingView view = find(name).orElse(null);
+		if (view == null || choices.isEmpty()) {
+			return;
+		}
+		int index = choices.indexOf(view.value());
+		commit(name, choices.get(Math.floorMod(index + 1, choices.size())));
+		rebuildWidgets();
+	}
+
 	private void toggleBoolean(String name) {
 		SettingView view = find(name).orElse(null);
 		if (view == null) {
@@ -245,9 +264,16 @@ public final class SettingsScreen extends Screen {
 	}
 
 	private void resetAll() {
+		GatewayStatus bulk = gateway().resetAllSettings();
+		if (bulk.ok()) {
+			reload();
+			feedbackOk = true;
+			feedback = bulk.message();
+			return;
+		}
 		int ok = 0;
 		int failed = 0;
-		String last = "";
+		String last = bulk.message();
 		for (SettingView view : gateway().getAllSettings()) {
 			GatewayStatus status = gateway().resetSetting(view.name());
 			if (status.ok()) {
@@ -345,12 +371,16 @@ public final class SettingsScreen extends Screen {
 
 	private static String haystack(SettingView view) {
 		return (view.name() + " " + view.kind().name() + " " + view.valueClass() + " " + view.genericType()
-				+ " " + view.value() + " " + view.defaultValue() + " " + HINTS.getOrDefault(view.name(), ""))
+				+ " " + view.value() + " " + view.defaultValue() + " " + view.description() + " "
+				+ String.join(" ", view.enumValues()) + " " + HINTS.getOrDefault(view.name(), ""))
 				.toLowerCase(Locale.ROOT);
 	}
 
 	private Tooltip tooltip(SettingView view) {
-		String hint = HINTS.getOrDefault(view.name(), "");
+		String hint = view.description().isBlank() ? HINTS.getOrDefault(view.name(), "") : view.description();
+		if (!view.enumValues().isEmpty()) {
+			hint = hint + "\n" + String.join(", ", view.enumValues());
+		}
 		return Tooltip.create(Component.translatable(
 				"screen.baritone-automate.settings.tip",
 				view.name(),

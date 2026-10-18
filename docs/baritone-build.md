@@ -52,4 +52,4 @@ dependencies {
 
 ## 运行时
 
-开发或玩家都要**另装**同一次源码构建的 Baritone Fabric 模组（`baritone-fabric-1.20.0.jar`）。`fabric.mod.json` 写了 `"baritone": "*"`。缺模组时加载器不会加载本模组；即便如此，入口仍用 `Class.forName` 探测，避免直接链到 API 类时在缺失场景下硬崩。
+开发或玩家都要**另装**同一次源码构建的 Baritone Fabric 模组（`baritone-fabric-1.20.0.jar`）。`fabric.mod.json` 把 `"baritone": "*"` 放在 `suggests`，不放进 `depends`。缺模组时本模组仍会加载，`isBaritonePresent()` 为 false，操作台出横幅并停用寻路。入口用 `Class.forName` 探测，避免直接链到 API 类时在缺失场景下硬崩。

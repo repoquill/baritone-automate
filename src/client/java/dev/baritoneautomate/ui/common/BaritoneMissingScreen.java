@@ -6,9 +6,9 @@ import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 
 /**
- * Shown from the control-screen banner. {@code fabric.mod.json} hard-depends on Baritone,
- * so a missing mod normally prevents this mod from loading at all. This screen covers the
- * case where the mod loaded but the Baritone provider is still not ready.
+ * Shown from the control-screen banner when {@code gateway().isBaritonePresent()} is false.
+ * Baritone is suggested, not required, so this mod still loads. The copy asks for a
+ * separately installed, self-built Fabric mod.
  */
 public final class BaritoneMissingScreen extends Screen {
 	private final Screen parent;
