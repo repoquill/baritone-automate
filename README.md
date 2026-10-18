@@ -4,6 +4,26 @@ Minecraft **26.3** Fabric **客户端**模组。另装 Baritone，由本模组�
 
 范围是单机和局域网「对局域网开放」。没有公共服反作弊、没有远端 API、没有自定义玩法包。
 
+## 安装与运行
+
+需要你自己的客户端，本仓库不带游戏、也不带可玩的 Baritone 模组。
+
+1. 安装 Minecraft **26.3**、Fabric Loader **0.19.5 或更高**（仍须支持 26.3）、Fabric API。
+2. 把发布用的 `baritone-automate-0.1.0.jar` 放进 `mods`。这个 JAR **没有嵌套 Baritone**。
+3. **另装自编译**的 Baritone Fabric 模组（同一次源码构建里的 `baritone-fabric-1.20.0.jar`）。`libs/baritone-api-fabric-1.20.0.jar` 只给编译用，不要把它当运行模组。步骤见 [docs/baritone-build.md](docs/baritone-build.md)。
+4. 启动客户端，进世界后按 `K` 打开操作台。没装 Baritone 时模组仍会加载，寻路按钮停用并出横幅。
+
+从源码编译（JDK 25，第一次需要能访问 Fabric / Mojang / Gradle 的 Maven）：
+
+```bash
+export JAVA_HOME=/path/to/jdk-25
+./gradlew build
+```
+
+产物在 `build/libs/baritone-automate-0.1.0.jar`。`verifyBaritoneNotNested` 会确认里面没有 `baritone/` 类。
+
+操作台、设置和阶段机在静态构建与单测里已经接上。**不能把「一键通关已经能打完末影龙」当成已验收。** 进游戏联调仍要自备 MC 26.3、自编译 Baritone 和 Fabric。
+
 ## 版本
 
 | 项 | 锁定 |
@@ -61,7 +81,7 @@ Baritone 是 LGPL-3.0，本模组源码是 MIT。另装、不打包，见 `NOTIC
 - Baritone 在 `fabric.mod.json` 里是 `suggests`，不是硬依赖。没装时模组仍会加载，`isBaritonePresent()` 为 false，日志写明寻路不可用，操作台可以出横幅。横幅同样覆盖「类在，但 Provider 还没就绪」。
 - 探索页的范围是方块半径。Baritone 的 `explore(x, z)` 没有半径参数，Gateway 会把范围内的区块写成反向 explore 过滤再下发。填 0 表示不限制。
 - 设置页从底栏打开。装了 Mod Menu 时，模组列表里的配置按钮也会打开设置。没装 Mod Menu 不影响启动。
-- 设置没有描述字段。搜索匹配 id、类型、当前值和一小张常用项提示（`allowBreak` 等）。全部重置是逐条 `resetSetting`。布尔和数字会立刻提交；字符串、枚举、列表按回车或「应用」。
+- 设置说明来自 Baritone 字段注释；没有注释时按名字拆词。常用项（`allowBreak` 等）行上有简短中文。搜索匹配 id 和说明。全部重置先走 `resetAllSettings`。布尔和数字会立刻提交；字符串、枚举、列表按回车或「应用」。
 - HUD 在通关不是空闲、正在寻路、或有进程名时出现在左上角。打开任何界面时先藏起来，避免挡住聊天。
 
 ## 已完成的后端
@@ -79,6 +99,6 @@ Baritone 是 LGPL-3.0，本模组源码是 MIT。另装、不打包，见 `NOTIC
 3. **不改 Baritone 破坏方块等预设**。地形相关设置留给 Settings UI，或直接 `gateway.setSetting`。
 4. mod id / 显示名用上面这组，不再待定。
 5. 用户取消后停在 **`IDLE`**（停战斗 → `forceCancel` → `IDLE`，阶段回到 `CHECK`）。`start()` 可以从这一状态直接开新的一局。`FAILED` 和 `DONE` 不会被取消改掉。
-6. 下界门只挖黑曜石，**不点火**。烈焰人、扔眼、要塞寻路没有实现。熔炼和合成是占位。
+6. 下界门、烈焰珍珠、扔眼、末地门填眼、熔炼和合成都有阶段代码和单测。进游戏是否真的点得动容器、眼睛是否被门框接受，还没有在 MC 26.3 客户端里验收。
 
 架构全文在 [docs/architecture.md](docs/architecture.md)。

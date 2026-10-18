@@ -1,8 +1,11 @@
 .gradle/
 build/
 out/
+bin/
 classes/
 run/
+logs/
+*.log
 
 .idea/
 *.iml
@@ -12,6 +15,8 @@ run/
 .vscode/
 .classpath
 .project
+*.swp
+*~
 
 .jdk/
 *.DS_Store
@@ -23,3 +28,10 @@ replay_*.log
 
 /uploads/
 /agent-tools/
+
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+secrets/
