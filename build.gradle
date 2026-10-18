@@ -1,0 +1,130 @@
+plugins {
+	id 'net.fabricmc.fabric-loom' version "${loom_version}"
+	id 'maven-publish'
+}
+
+version = project.version
+group = project.group
+
+base {
+	archivesName = 'baritone-automate'
+}
+
+repositories {
+	mavenCentral()
+	// Local self-built Baritone API. Not Maven Central, and not a GitHub Release jar.
+	flatDir {
+		dirs 'libs'
+	}
+}
+
+loom {
+	splitEnvironmentSourceSets()
+
+	mods {
+		'baritone-automate' {
+			sourceSet sourceSets.main
+			sourceSet sourceSets.client
+		}
+	}
+}
+
+dependencies {
+	minecraft "com.mojang:minecraft:${project.minecraft_version}"
+	implementation "net.fabricmc:fabric-loader:${project.loader_version}"
+	implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
+
+	// compileOnly + files(): the API is on the compile classpath only.
+	// The published mod jar must not nest Baritone; players install Baritone separately.
+	compileOnly files('libs/baritone-api-fabric-1.20.0.jar')
+
+	testImplementation platform('org.junit:junit-bom:5.12.2')
+	testImplementation 'org.junit.jupiter:junit-jupiter'
+	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+// Client sources are the mod. Tests live on the plain test source set and only need our types.
+sourceSets {
+	test {
+		compileClasspath += sourceSets.client.output
+		runtimeClasspath += sourceSets.client.output
+	}
+}
+
+processResources {
+	def version = project.version
+	inputs.property 'version', version
+	filesMatching('fabric.mod.json') {
+		expand 'version': version
+	}
+}
+
+tasks.withType(JavaCompile).configureEach {
+	it.options.encoding = 'UTF-8'
+	it.options.release = 25
+}
+
+tasks.named('compileTestJava') {
+	dependsOn tasks.named('compileClientJava')
+}
+
+tasks.named('test') {
+	useJUnitPlatform()
+}
+
+java {
+	withSourcesJar()
+	sourceCompatibility = JavaVersion.VERSION_25
+	targetCompatibility = JavaVersion.VERSION_25
+}
+
+def archives = base.archivesName.get()
+jar {
+	from('LICENSE') {
+		rename { "${it}_${archives}" }
+	}
+	from('NOTICE') {
+		rename { "${it}_${archives}" }
+	}
+}
+
+def releaseJar = tasks.named('jar', org.gradle.api.tasks.bundling.Jar).flatMap { it.archiveFile }
+tasks.register('verifyBaritoneNotNested') {
+	dependsOn tasks.named('jar')
+	inputs.file(releaseJar)
+	doLast {
+		def jarFile = releaseJar.get().asFile
+		def required = 'dev/baritoneautomate/bootstrap/BaritoneAutomateClient.class'
+		def zip = new java.util.zip.ZipFile(jarFile)
+		try {
+			if (zip.getEntry(required) == null) {
+				throw new GradleException("Client entrypoint missing from ${jarFile.name}")
+			}
+			def bad = []
+			def entries = zip.entries()
+			while (entries.hasMoreElements()) {
+				def name = entries.nextElement().name
+				if (name.startsWith('baritone/') || name.contains('baritone-api-fabric') || name.startsWith('META-INF/jars/')) {
+					bad << name
+				}
+			}
+			if (!bad.isEmpty()) {
+				throw new GradleException("Release jar must not nest Baritone: ${bad}")
+			}
+		} finally {
+			zip.close()
+		}
+	}
+}
+
+tasks.named('check') {
+	dependsOn tasks.named('verifyBaritoneNotNested')
+}
+
+publishing {
+	publications {
+		create('mavenJava', MavenPublication) {
+			from components.java
+		}
+	}
+}

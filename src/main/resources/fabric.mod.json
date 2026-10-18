@@ -1,0 +1,24 @@
+{
+	"schemaVersion": 1,
+	"id": "baritone-automate",
+	"version": "${version}",
+	"name": "Baritone Automate",
+	"description": "Client-side orchestration for a separately installed Baritone. Singleplayer and Open to LAN only. Does not bundle Baritone.",
+	"authors": [
+		"Baritone Automate"
+	],
+	"license": "MIT",
+	"environment": "client",
+	"entrypoints": {
+		"client": [
+			"dev.baritoneautomate.bootstrap.BaritoneAutomateClient"
+		]
+	},
+	"depends": {
+		"fabricloader": ">=0.19.5",
+		"minecraft": "~26.3",
+		"java": ">=25",
+		"fabric-api": "*",
+		"baritone": "*"
+	}
+}

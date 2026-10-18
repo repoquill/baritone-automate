@@ -1,0 +1,7 @@
+{
+	"key.category.baritone-automate.controls": "Baritone Automate",
+	"key.baritone-automate.open_controls": "Open Controls (UI stub)",
+	"key.baritone-automate.toggle_pause": "Pause Or Resume Run",
+	"key.baritone-automate.cancel_run": "Cancel Run",
+	"key.baritone-automate.force_cancel": "Force Cancel Run"
+}

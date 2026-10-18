@@ -1,0 +1,7 @@
+{
+	"key.category.baritone-automate.controls": "Baritone Automate",
+	"key.baritone-automate.open_controls": "打开操作台（界面由前端实现）",
+	"key.baritone-automate.toggle_pause": "暂停或继续通关",
+	"key.baritone-automate.cancel_run": "取消通关",
+	"key.baritone-automate.force_cancel": "强制取消通关"
+}

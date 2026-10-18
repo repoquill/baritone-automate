@@ -1,0 +1,12 @@
+Baritone Automate
+
+This mod orchestrates a separately installed Baritone. It does not include
+Baritone source or binaries in the published jar.
+
+Baritone is copyright its authors and licensed under the GNU Lesser General
+Public License v3.0 (LGPL-3.0). See https://github.com/cabaletta/baritone.
+
+The file libs/baritone-api-fabric-1.20.0.jar is a local compile-only API jar
+built from the Baritone 26.3 branch (commit 25111da). It is not nested into
+this mod's release jar. Runtime installs must ship that Baritone build (or a
+compatible one) as its own mod.
