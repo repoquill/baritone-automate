@@ -16,6 +16,14 @@ public record ActionResult(Status status, String message) {
 		}
 	}
 
+	public static ActionResult ok(String message) {
+		return new ActionResult(Status.OK, message);
+	}
+
+	public static ActionResult missing(String message) {
+		return new ActionResult(Status.MISSING, message);
+	}
+
 	public static ActionResult unsupported(String message) {
 		return new ActionResult(Status.UNSUPPORTED, message);
 	}

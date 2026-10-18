@@ -398,6 +398,18 @@ final class BaritoneGatewayImpl implements BaritoneGateway {
 	}
 
 	@Override
+	public GatewayStatus resetAllSettings() {
+		return call(baritone -> {
+			int count = 0;
+			for (Settings.Setting<?> setting : BaritoneAPI.getSettings().allSettings) {
+				setting.reset();
+				count++;
+			}
+			return GatewayStatus.ok("reset " + count + " settings");
+		});
+	}
+
+	@Override
 	public PathingSnapshot observe() {
 		try {
 			IBaritone baritone = require();
@@ -466,6 +478,11 @@ final class BaritoneGatewayImpl implements BaritoneGateway {
 		if (kind == ProcessKind.MINE) {
 			outcome = ProcessOutcome.SUCCEEDED;
 			detail = "mine finished";
+			return;
+		}
+		if (kind == ProcessKind.EXPLORE || kind == ProcessKind.FOLLOW || kind == ProcessKind.FARM) {
+			outcome = ProcessOutcome.SUCCEEDED;
+			detail = kind.name().toLowerCase(Locale.ROOT) + " finished";
 			return;
 		}
 		outcome = ProcessOutcome.FAILED;
@@ -614,7 +631,9 @@ final class BaritoneGatewayImpl implements BaritoneGateway {
 				safeText(() -> SettingsUtil.settingValueToString(setting), setting.value),
 				safeText(() -> SettingsUtil.settingDefaultToString(setting), setting.defaultValue),
 				setting.isJavaOnly(),
-				modified);
+				modified,
+				"",
+				SettingEnums.names(valueClass));
 	}
 
 	private static String safeText(SettingText text, Object fallback) {

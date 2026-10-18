@@ -66,6 +66,9 @@ public interface BaritoneGateway {
 
 	GatewayStatus resetSetting(String name);
 
+	/** Reset every Baritone setting. Absent when Baritone is not loaded. */
+	GatewayStatus resetAllSettings();
+
 	PathingSnapshot observe();
 
 	ProcessSnapshot currentProcess();

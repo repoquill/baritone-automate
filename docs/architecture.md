@@ -75,7 +75,7 @@
 4. **路点**：对齐 Baritone 路点模型（list/save/goto/delete）
 5. **Settings**：getAll / get / set / reset；暴露类型元数据给 UI
 6. **观测**：当前 Process、是否 pathing、目标摘要；ETA 用段进度+启发式（标注估算）
-7. **可用性**：`isBaritonePresent()`；`fabric.mod.json` depends `baritone: "*"`；缺失则 UI 提示另装
+7. **可用性**：`isBaritonePresent()`；`fabric.mod.json` 用 `suggests.baritone`，缺模组仍加载并走 Absent；缺失则 UI 提示另装
 
 ### 4.3 依赖方式（落地 · 源码构建优先）
 
@@ -85,7 +85,7 @@
 2. 按该分支工程（mc=26.3，mod=1.20.0，fabricloader=0.19.5，java=25）**本地编译**，产出 `baritone-api-fabric`（及运行所需的 fabric 发行物）。
 3. 将 api 产物发布到 **`mavenLocal`**，或复制到本仓库 **`libs/`**（仅作编译/开发 classpath）。
 4. 本模组：`mavenLocal()` + 坐标，或 `flatDir`/`files` 指向自编译 api；**发布 jar 不打包 Baritone**。
-5. 运行时：玩家/开发者安装**同一次源码构建的 Baritone fabric 模组**（或经确认的等价构建）；`depends.baritone: "*"`。
+5. 运行时：玩家/开发者安装**同一次源码构建的 Baritone fabric 模组**（或经确认的等价构建）。`fabric.mod.json` 把 `baritone` 放在 `suggests`，不放进 `depends`，这样没装时本模组仍能加载并报告 `isBaritonePresent()==false`。
 
 **明确不做**：把「下载 GitHub Release 预编译 `baritone-api-fabric-*.jar`」作为默认/推荐依赖获取方式（浏览器曾报不安全；待安全结论后再议是否允许作备选）。
 
@@ -143,7 +143,7 @@ git clone …/baritone && git checkout 26.3 && ./gradlew …   # 产出 api + fa
   libs/                                # 可选：放置「自编译」api jar（勿提交预编译来路不明的包；勿进发布 jar）
   gradle.properties                    # mc=26.3, java=25, loader, fabric-api, loom
   src/client/java/<pkg>/{bridge,ui,hud,automate,combat,inventory}/
-  src/main/resources/fabric.mod.json   # environment:client; depends.baritone:"*"
+  src/main/resources/fabric.mod.json   # environment:client; suggests.baritone
   docs/architecture.md
   docs/baritone-build.md               # 从 26.3 源码编译并安装到 mavenLocal/libs 的步骤
   README.md                            # 单机/局域网；Baritone 源码自编译另装；LGPL 说明

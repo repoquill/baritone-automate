@@ -2,6 +2,7 @@ package dev.baritoneautomate.bootstrap;
 
 import dev.baritoneautomate.automate.BlockPosView;
 import dev.baritoneautomate.automate.ClientView;
+import dev.baritoneautomate.inventory.ActionResult;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.BlockPos;
@@ -42,5 +43,30 @@ public final class MinecraftClientView implements ClientView {
 		}
 		BlockPos pos = player.blockPosition();
 		return new BlockPosView(pos.getX(), pos.getY(), pos.getZ());
+	}
+
+	@Override
+	public BlockPosView findNearbyBlock(String blockId, int radius) {
+		return ClientWorldActions.findNearbyBlock(blockId, radius);
+	}
+
+	@Override
+	public BlockPosView findNearbyEntity(String entityId, double radius) {
+		return ClientWorldActions.findNearbyEntity(entityId, radius);
+	}
+
+	@Override
+	public ActionResult useItem(String itemId) {
+		return ClientWorldActions.useItem(itemId);
+	}
+
+	@Override
+	public ActionResult attackNearest(String entityId, double reach) {
+		return ClientWorldActions.attackNearest(entityId, reach);
+	}
+
+	@Override
+	public ActionResult lightNetherPortal() {
+		return ClientWorldActions.lightNetherPortal();
 	}
 }

@@ -48,7 +48,7 @@ public final class BaritoneAutomateClient implements ClientModInitializer {
 		ClientLifecycle.install(gateway, runs, combat, keys, LOGGER);
 		ModScreens.install();
 		if (!gateway.isBaritonePresent()) {
-			LOGGER.warn("Baritone is not ready yet. The gateway will keep trying; pathing calls fail until it is.");
+			LOGGER.warn("Baritone is not available. isBaritonePresent() is false. Pathing calls fail until a 26.3 Baritone provider is ready.");
 		}
 		LOGGER.info("Baritone Automate ready. Press K to open the control screen.");
 	}

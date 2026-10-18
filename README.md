@@ -48,7 +48,7 @@ Baritone 是 LGPL-3.0，本模组源码是 MIT。另装、不打包，见 `NOTIC
 - `BaritoneAutomateClient.inventory()`
 - `BaritoneAutomateClient.keys().setOpenControlsHook(...)` 打开操作台
 
-热键已注册（控件里可改）：`K` 打开操作台、`]` 暂停/继续通关、`\` 取消通关、`End` 强制取消通关。取消走同一条序列：停战斗、`forceCancel`、状态 `CANCELLED`。暂停和取消键没有被界面拆掉。
+热键已注册（控件里可改）：`K` 打开操作台、`]` 暂停/继续通关、`\` 取消通关、`End` 强制取消通关。取消走同一条序列：停战斗、`forceCancel`、状态回到 `IDLE`。暂停和取消键没有被界面拆掉。
 
 ## 操作台
 
@@ -57,8 +57,8 @@ Baritone 是 LGPL-3.0，本模组源码是 MIT。另装、不打包，见 `NOTIC
 - 顶栏是进程、是否在寻路、ETA。ETA 来自 Baritone 的估算 tick（20 tick 记 1 秒），文案带「约」。
 - 底栏：暂停 / 继续 / 取消 / 强取，外加设置。强取会再确认一次。这四个按钮打的是 Baritone 进程，不是通关状态机。
 - 页签：控制、目标、挖掘、探索、跟随、路点、通关。
-- 通关页的「一键通关（至屠龙）」走 `RunController.start()`。失败后可以「继续」。`回到空闲` 调用 `reset()`，因为取消会停在 `CANCELLED`。
-- Baritone 的 Provider 还没就绪时，顶栏出横幅，寻路按钮停用。`fabric.mod.json` 硬依赖 `baritone`，缺模组时本模组通常根本不会加载；横幅覆盖的是「已加载但 Provider 失败」。
+- 通关页的「一键通关（至屠龙）」走 `RunController.start()`。失败后可以「继续」。取消会停战斗、`forceCancel`，然后回到 `IDLE`。
+- Baritone 在 `fabric.mod.json` 里是 `suggests`，不是硬依赖。没装时模组仍会加载，`isBaritonePresent()` 为 false，日志写明寻路不可用，操作台可以出横幅。横幅同样覆盖「类在，但 Provider 还没就绪」。
 - 探索页有范围框。`BaritoneGateway.explore` 只有中心 X/Z，范围不会发出去。
 - 设置页从底栏打开。装了 Mod Menu 时，模组列表里的配置按钮也会打开设置。没装 Mod Menu 不影响启动。
 - 设置没有描述字段。搜索匹配 id、类型、当前值和一小张常用项提示（`allowBreak` 等）。全部重置是逐条 `resetSetting`。布尔和数字会立刻提交；字符串、枚举、列表按回车或「应用」。
@@ -68,7 +68,7 @@ Baritone 是 LGPL-3.0，本模组源码是 MIT。另装、不打包，见 `NOTIC
 
 - **bootstrap**：客户端入口、Baritone 类探测、缺失时降级到 `AbsentBaritoneGateway`、客户端 tick、热键 stub。
 - **bridge**：`BaritoneGateway` 是唯一封装。pause 用我们自己的 `REQUEST_PAUSE` Process（Baritone 的 `#pause` 命令是私有的，注释写明不要用反射去调）。另有 resume、cancel、forceCancel、CustomGoal、goto、thisway、mine、explore、follow、farm、路点、Settings 读写和类型元数据、pathing / Process 观测。
-- **automate**：`IDLE | RUNNING | PAUSED | COMBAT | FAILED | CANCELLED | DONE`，阶段 `CHECK → EARLY_WOOD → IRON → DIAMOND → NETHER_PORTAL → BLAZE_PEARL → STRONGHOLD → ENTER_END → END_APPROACH → CRYSTALS → DRAGON → DONE`。前段会真下发 mine。后段烈焰棒/珍珠、要塞、进末地是可跳过的 stub，末地接近会 `gotoXZ(0, 0)`，水晶和龙交给 combat。有跳过、暂停、超时（默认重试一次再失败）、失败后 `continueRun()`。
+- **automate**：`IDLE | RUNNING | PAUSED | COMBAT | FAILED | CANCELLED | DONE`。取消进行中的一局会回到 `IDLE`（`CANCELLED` 仍留在枚举里，不再作为取消终态）。阶段 `CHECK → EARLY_WOOD → IRON → DIAMOND → NETHER_PORTAL → BLAZE_PEARL → STRONGHOLD → ENTER_END → END_APPROACH → CRYSTALS → DRAGON → DONE`。挖矿要库存达标才前进，Process 结束不够就再挖。下界门会尝试搭框并点火。烈焰珍珠会在下界追击，要塞会扔末影之眼，进末地会走向末地门。末地接近 `gotoXZ(0, 0)`，水晶要扫完环，龙在交战过后消失算击败。有跳过、暂停、超时（默认重试一次再失败）、失败后 `continueRun()`。
 - **combat**：末地水晶接近后攻击；龙低速贴地近战，否则热键栏拉弓。低血量回调会暂停 Run，不判失败。可取消。
 - **inventory**：计数、热键栏选物。`craft` / `smelt` 返回 `UNSUPPORTED`。
 
@@ -78,7 +78,7 @@ Baritone 是 LGPL-3.0，本模组源码是 MIT。另装、不打包，见 `NOTIC
 2. **难度**按生存向末地战写。和平难度没有龙时，屠龙阶段会失败，可以跳过。不检测游戏难度。
 3. **不改 Baritone 破坏方块等预设**。地形相关设置留给 Settings UI，或直接 `gateway.setSetting`。
 4. mod id / 显示名用上面这组，不再待定。
-5. 用户取消后停在 **`CANCELLED`**，方便 HUD 读到终态。`reset()` 回到 `IDLE`；`start()` 也可以从终态直接开新一局。这和架构里「取消 → IDLE」的差别记在这里：终态保留，空闲要再走一步。
+5. 用户取消后停在 **`IDLE`**（停战斗 → `forceCancel` → `IDLE`，阶段回到 `CHECK`）。`start()` 可以从这一状态直接开新的一局。`FAILED` 和 `DONE` 不会被取消改掉。
 6. 下界门只挖黑曜石，**不点火**。烈焰人、扔眼、要塞寻路没有实现。熔炼和合成是占位。
 
 架构全文在 [docs/architecture.md](docs/architecture.md)。

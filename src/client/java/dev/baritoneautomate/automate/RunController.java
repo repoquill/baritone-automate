@@ -10,8 +10,8 @@ import java.util.List;
 
 /**
  * Speedrun-shaped state machine. It only orchestrates the gateway, inventory, and combat.
- * Cancel stops combat, clears our pause, force-cancels Baritone, and lands on {@link RunState#CANCELLED}.
- * {@link #reset()} is what returns to {@link RunState#IDLE}. {@link #start()} also accepts a terminal state.
+ * Cancel stops combat, clears our pause, force-cancels Baritone, and lands on {@link RunState#IDLE}.
+ * {@link #start()} accepts that idle state and any other state that is not active.
  */
 public final class RunController {
 	private final BaritoneGateway gateway;
@@ -146,11 +146,15 @@ public final class RunController {
 		combat.setPaused(false);
 		gateway.resume();
 		gateway.forceCancel();
-		if (state.active()) {
-			state = RunState.CANCELLED;
-			detail = "cancelled";
-			log.info("Run cancelled in " + phase);
+		if (!state.active()) {
+			return;
 		}
+		state = RunState.IDLE;
+		phase = RunPhase.CHECK;
+		attempt = 0;
+		failureReason = "";
+		detail = "cancelled";
+		log.info("Run cancelled");
 	}
 
 	public void reset() {

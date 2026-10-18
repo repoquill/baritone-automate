@@ -15,11 +15,10 @@ import dev.baritoneautomate.combat.CombatSnapshot;
 import java.util.List;
 
 /**
- * Back half of the route. Blaze/pearl, stronghold, and entering the end are stubs
- * that still sit on the chain. Crystals and the dragon call {@code CombatSession}.
+ * Back half of the route. Blaze, stronghold, and the end portal call the gateway
+ * and the client view. Crystals and the dragon call {@code CombatSession}.
  */
 public final class LatePhases {
-	private static final long FIFTEEN_MINUTES = 15 * 60_000L;
 	private static final long FIVE_MINUTES = 5 * 60_000L;
 	private static final long FOUR_MINUTES = 4 * 60_000L;
 	private static final long SIX_MINUTES = 6 * 60_000L;
@@ -28,35 +27,7 @@ public final class LatePhases {
 	}
 
 	public static List<PhaseHandler> all() {
-		return List.of(blazePearl(), stronghold(), enterEnd(), endApproach(), crystals(), dragon());
-	}
-
-	private static PhaseHandler blazePearl() {
-		return waiting(
-				RunPhase.BLAZE_PEARL,
-				FIFTEEN_MINUTES,
-				"stub: waiting for blaze_rod >= 6 and ender_pearl >= 12, or skip",
-				context -> Dimensions.isEnd(context.world().dimensionId())
-						|| (context.inventory().count("blaze_rod") >= 6 && context.inventory().count("ender_pearl") >= 12),
-				"blaze rods and ender pearls ready");
-	}
-
-	private static PhaseHandler stronghold() {
-		return waiting(
-				RunPhase.STRONGHOLD,
-				FIFTEEN_MINUTES,
-				"stub: eye throw and stronghold path are not implemented; skip or enter the end",
-				context -> Dimensions.isEnd(context.world().dimensionId()),
-				"already in the end");
-	}
-
-	private static PhaseHandler enterEnd() {
-		return waiting(
-				RunPhase.ENTER_END,
-				FIFTEEN_MINUTES,
-				"stub: waiting for dimension minecraft:the_end",
-				context -> Dimensions.isEnd(context.world().dimensionId()),
-				"in the end");
+		return List.of(new HuntPhase(), new StrongholdPhase(), new EnterEndPhase(), endApproach(), crystals(), dragon());
 	}
 
 	private static PhaseHandler endApproach() {
@@ -80,7 +51,7 @@ public final class LatePhases {
 			@Override
 			public PhaseTick onTick(PhaseContext context) {
 				if (!Dimensions.isEnd(context.world().dimensionId())) {
-					return PhaseTick.cont("stub: not in the end yet");
+					return PhaseTick.fail("end approach requires the end");
 				}
 				if (error != null) {
 					return PhaseTick.fail(error);
@@ -173,38 +144,6 @@ public final class LatePhases {
 					: PhaseTick.cont(combat.detail());
 			case FAILED, CANCELLED -> PhaseTick.fail(combat.detail().isBlank() ? "combat failed" : combat.detail());
 			case IDLE, RUNNING -> PhaseTick.cont(combat.detail().isBlank() ? "in combat" : combat.detail());
-		};
-	}
-
-	private static PhaseHandler waiting(
-			RunPhase phase,
-			long timeoutMillis,
-			String waitingDetail,
-			java.util.function.Predicate<PhaseContext> done,
-			String doneDetail
-	) {
-		return new PhaseHandler() {
-			@Override
-			public RunPhase phase() {
-				return phase;
-			}
-
-			@Override
-			public void onEnter(PhaseContext context) {
-			}
-
-			@Override
-			public PhaseTick onTick(PhaseContext context) {
-				if (done.test(context)) {
-					return PhaseTick.advance(doneDetail);
-				}
-				return PhaseTick.cont(waitingDetail);
-			}
-
-			@Override
-			public long timeoutMillis() {
-				return timeoutMillis;
-			}
 		};
 	}
 }

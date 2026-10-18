@@ -1,14 +1,9 @@
 package dev.baritoneautomate.automate.phases;
 
-import dev.baritoneautomate.automate.Dimensions;
 import dev.baritoneautomate.automate.PhaseContext;
 import dev.baritoneautomate.automate.PhaseHandler;
 import dev.baritoneautomate.automate.PhaseTick;
 import dev.baritoneautomate.automate.RunPhase;
-import dev.baritoneautomate.bridge.GatewayStatus;
-import dev.baritoneautomate.bridge.ProcessKind;
-import dev.baritoneautomate.bridge.ProcessOutcome;
-import dev.baritoneautomate.bridge.ProcessSnapshot;
 import dev.baritoneautomate.inventory.ItemIds;
 import java.util.List;
 
@@ -83,7 +78,7 @@ public final class EarlyPhases {
 				List.of("iron_ore", "deepslate_iron_ore"),
 				context -> context.inventory().countAny("raw_iron", "iron_ingot", "iron_ore", "deepslate_iron_ore") > 0,
 				"mining iron",
-				"iron step finished; smelting is an inventory stub",
+				"iron gathered",
 				EIGHT_MINUTES);
 	}
 
@@ -99,66 +94,7 @@ public final class EarlyPhases {
 	}
 
 	private static PhaseHandler netherPortal() {
-		return new PhaseHandler() {
-			private String error;
-			private long tracked = -1L;
-
-			@Override
-			public RunPhase phase() {
-				return RunPhase.NETHER_PORTAL;
-			}
-
-			@Override
-			public void onEnter(PhaseContext context) {
-				error = null;
-				tracked = -1L;
-				if (leftOverworld(context)) {
-					return;
-				}
-				if (context.inventory().count("obsidian") >= 10) {
-					return;
-				}
-				GatewayStatus status = context.gateway().mine(10, List.of("obsidian"));
-				if (!status.ok()) {
-					error = status.message();
-					return;
-				}
-				tracked = context.gateway().currentProcess().generation();
-			}
-
-			@Override
-			public PhaseTick onTick(PhaseContext context) {
-				if (error != null) {
-					return PhaseTick.fail(error);
-				}
-				if (leftOverworld(context)) {
-					return PhaseTick.advance("already left the overworld");
-				}
-				if (context.inventory().count("obsidian") >= 10) {
-					return PhaseTick.advance("obsidian gathered; portal ignition is an inventory stub");
-				}
-				ProcessSnapshot process = context.gateway().currentProcess();
-				if (process.generation() == tracked && tracked >= 0L && process.kind() == ProcessKind.MINE) {
-					if (process.outcome() == ProcessOutcome.SUCCEEDED) {
-						return PhaseTick.advance("obsidian mine finished; portal ignition is an inventory stub");
-					}
-					if (process.outcome() == ProcessOutcome.FAILED) {
-						return PhaseTick.fail(process.detail().isBlank() ? "obsidian mine failed" : process.detail());
-					}
-				}
-				return PhaseTick.cont("mining obsidian");
-			}
-
-			@Override
-			public long timeoutMillis() {
-				return TEN_MINUTES;
-			}
-		};
-	}
-
-	private static boolean leftOverworld(PhaseContext context) {
-		String dimension = context.world().dimensionId();
-		return Dimensions.isNether(dimension) || Dimensions.isEnd(dimension);
+		return new NetherPortalPhase(TEN_MINUTES);
 	}
 
 	private static int logCount(PhaseContext context) {

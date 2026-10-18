@@ -62,15 +62,17 @@ class RunControllerTest {
 	}
 
 	@Test
-	void woodMinesThenAdvancesWhenTheProcessFinishes() {
+	void woodMineFinishingShortDoesNotAdvance() {
 		Harness harness = Harness.create();
 		assertTrue(harness.runs.start());
 		harness.runs.tick();
 		assertEquals(RunPhase.EARLY_WOOD, harness.runs.snapshot().phase());
 		assertEquals(1, harness.gateway.mines);
+		harness.gateway.completeProcess();
 		harness.runs.tick();
 		assertEquals(RunPhase.EARLY_WOOD, harness.runs.snapshot().phase());
-		harness.gateway.completeProcess();
+		assertEquals(2, harness.gateway.mines);
+		harness.inventory.set("oak_log", 4);
 		harness.runs.tick();
 		assertEquals(RunPhase.IRON, harness.runs.snapshot().phase());
 		assertEquals(RunState.RUNNING, harness.runs.snapshot().state());
@@ -112,9 +114,12 @@ class RunControllerTest {
 		assertTrue(harness.runs.resume());
 		assertEquals(RunState.RUNNING, harness.runs.snapshot().state());
 		harness.runs.cancel();
-		assertEquals(RunState.CANCELLED, harness.runs.snapshot().state());
+		assertEquals(RunState.IDLE, harness.runs.snapshot().state());
+		assertEquals(RunPhase.CHECK, harness.runs.snapshot().phase());
+		assertEquals("cancelled", harness.runs.snapshot().detail());
 		assertEquals(1, harness.gateway.forceCancels);
 		assertFalse(harness.runs.snapshot().state().active());
+		assertTrue(harness.runs.start());
 	}
 
 	@Test
@@ -178,6 +183,7 @@ class RunControllerTest {
 		assertTrue(gateway.listWaypoints().isEmpty());
 		assertTrue(gateway.getSetting("allowBreak").isEmpty());
 		assertFalse(gateway.observe().baritonePresent());
+		assertFalse(gateway.resetAllSettings().ok());
 	}
 
 	@Test
@@ -188,6 +194,108 @@ class RunControllerTest {
 		assertEquals(SettingKind.BOOLEAN, SettingKind.of(Boolean.class));
 		assertEquals(SettingKind.LIST, SettingKind.of(List.class));
 		assertEquals(SettingKind.OTHER, SettingKind.of(StringBuilder.class));
+	}
+
+	@Test
+	void portalDoesNotAdvanceWhenTheObsidianMineFinishesShort() {
+		Harness harness = reach(RunPhase.NETHER_PORTAL);
+		assertTrue(harness.gateway.mines >= 1);
+		int mines = harness.gateway.mines;
+		harness.gateway.completeProcess();
+		harness.runs.tick();
+		assertEquals(RunPhase.NETHER_PORTAL, harness.runs.snapshot().phase());
+		assertEquals(mines + 1, harness.gateway.mines);
+		assertEquals(0, harness.world.lights);
+	}
+
+	@Test
+	void portalAdvancesAfterTheDimensionChanges() {
+		Harness harness = reach(RunPhase.NETHER_PORTAL);
+		harness.world.dimension = "minecraft:the_nether";
+		harness.runs.tick();
+		assertEquals(RunPhase.BLAZE_PEARL, harness.runs.snapshot().phase());
+	}
+
+	@Test
+	void portalTriesToIgniteOnceObsidianIsInInventory() {
+		Harness harness = Harness.create();
+		harness.runs.setSkipDiamond(true);
+		harness.runs.start();
+		harness.runs.tick();
+		assertTrue(harness.runs.skipPhase());
+		harness.inventory.set("obsidian", 10);
+		assertTrue(harness.runs.skipPhase());
+		assertEquals(RunPhase.NETHER_PORTAL, harness.runs.snapshot().phase());
+		harness.runs.tick();
+		assertEquals(RunPhase.NETHER_PORTAL, harness.runs.snapshot().phase());
+		assertEquals(1, harness.world.lights);
+		assertEquals(RunState.RUNNING, harness.runs.snapshot().state());
+	}
+
+	@Test
+	void blazeFailsInTheOverworldWithoutAPortal() {
+		Harness harness = reach(RunPhase.BLAZE_PEARL);
+		harness.runs.tick();
+		assertEquals(RunState.FAILED, harness.runs.snapshot().state());
+		assertTrue(harness.runs.snapshot().failureReason().contains("nether"));
+	}
+
+	@Test
+	void blazeExploresTheNetherUntilATargetAppears() {
+		Harness harness = reach(RunPhase.BLAZE_PEARL);
+		harness.world.dimension = "minecraft:the_nether";
+		harness.runs.tick();
+		assertEquals(RunPhase.BLAZE_PEARL, harness.runs.snapshot().phase());
+		assertEquals(RunState.RUNNING, harness.runs.snapshot().state());
+		assertTrue(harness.gateway.explores >= 1);
+	}
+
+	@Test
+	void strongholdFailsWithoutEyes() {
+		Harness harness = reach(RunPhase.STRONGHOLD);
+		harness.world.dimension = "minecraft:the_nether";
+		harness.runs.tick();
+		assertEquals(RunState.FAILED, harness.runs.snapshot().state());
+		assertTrue(harness.runs.snapshot().failureReason().contains("ender eyes"));
+	}
+
+	@Test
+	void strongholdAdvancesBesideAPortalFrame() {
+		Harness harness = reach(RunPhase.STRONGHOLD);
+		harness.world.dimension = "minecraft:overworld";
+		harness.world.nearbyBlockId = "end_portal_frame";
+		harness.world.nearbyBlock = harness.world.pos;
+		harness.runs.tick();
+		assertEquals(RunPhase.ENTER_END, harness.runs.snapshot().phase());
+	}
+
+	@Test
+	void enterEndFailsWhenNoPortalIsNearby() {
+		Harness harness = reach(RunPhase.ENTER_END);
+		harness.runs.tick();
+		assertEquals(RunState.FAILED, harness.runs.snapshot().state());
+		assertTrue(harness.runs.snapshot().failureReason().contains("end portal"));
+	}
+
+	@Test
+	void enterEndAdvancesOnceTheDimensionIsTheEnd() {
+		Harness harness = reach(RunPhase.ENTER_END);
+		harness.world.dimension = "minecraft:the_end";
+		harness.runs.tick();
+		assertEquals(RunPhase.END_APPROACH, harness.runs.snapshot().phase());
+	}
+
+	private static Harness reach(RunPhase target) {
+		Harness harness = Harness.create();
+		harness.runs.setSkipDiamond(true);
+		assertTrue(harness.runs.start());
+		harness.runs.tick();
+		int guard = 0;
+		while (harness.runs.snapshot().phase() != target && guard++ < 12) {
+			assertTrue(harness.runs.skipPhase(), "stuck in " + harness.runs.snapshot().phase());
+		}
+		assertEquals(target, harness.runs.snapshot().phase());
+		return harness;
 	}
 
 	private static final class Harness {
@@ -228,6 +336,16 @@ class RunControllerTest {
 		boolean alive = true;
 		String dimension = "minecraft:overworld";
 		BlockPosView pos = new BlockPosView(100, 64, 100);
+		String nearbyBlockId;
+		BlockPosView nearbyBlock;
+		String nearbyEntityId;
+		BlockPosView nearbyEntity;
+		int lights;
+		int uses;
+		int attacks;
+		ActionResult light = ActionResult.ok("placing the portal frame");
+		ActionResult used = ActionResult.ok("used");
+		ActionResult attacked = ActionResult.ok("attacked");
 
 		@Override
 		public boolean inGame() {
@@ -252,6 +370,40 @@ class RunControllerTest {
 		@Override
 		public BlockPosView blockPos() {
 			return pos;
+		}
+
+		@Override
+		public BlockPosView findNearbyBlock(String blockId, int radius) {
+			if (nearbyBlock != null && nearbyBlockId != null && ItemIds.matches(nearbyBlockId, blockId)) {
+				return nearbyBlock;
+			}
+			return null;
+		}
+
+		@Override
+		public BlockPosView findNearbyEntity(String entityId, double radius) {
+			if (nearbyEntity != null && nearbyEntityId != null && ItemIds.matches(nearbyEntityId, entityId)) {
+				return nearbyEntity;
+			}
+			return null;
+		}
+
+		@Override
+		public ActionResult useItem(String itemId) {
+			uses++;
+			return used;
+		}
+
+		@Override
+		public ActionResult attackNearest(String entityId, double reach) {
+			attacks++;
+			return attacked;
+		}
+
+		@Override
+		public ActionResult lightNetherPortal() {
+			lights++;
+			return light;
 		}
 	}
 
@@ -349,6 +501,7 @@ class RunControllerTest {
 	private static final class FakeGateway implements BaritoneGateway {
 		boolean present = true;
 		int mines;
+		int explores;
 		int forceCancels;
 		int cancels;
 		long generation;
@@ -423,6 +576,7 @@ class RunControllerTest {
 
 		@Override
 		public GatewayStatus explore(int x, int z) {
+			explores++;
 			return start(ProcessKind.EXPLORE, "explore");
 		}
 
@@ -484,6 +638,11 @@ class RunControllerTest {
 		@Override
 		public GatewayStatus resetSetting(String name) {
 			return GatewayStatus.ok("reset");
+		}
+
+		@Override
+		public GatewayStatus resetAllSettings() {
+			return GatewayStatus.ok("reset all");
 		}
 
 		@Override

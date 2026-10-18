@@ -32,10 +32,10 @@ public final class PlayerInventoryAccess implements InventoryAccess {
 		}
 		int total = 0;
 		Inventory inventory = player.getInventory();
+		// getContainerSize() already includes equipment slots, offhand included.
 		for (int slot = 0; slot < inventory.getContainerSize(); slot++) {
 			total += matching(inventory.getItem(slot), normalizedItemId);
 		}
-		total += matching(player.getOffhandItem(), normalizedItemId);
 		return total;
 	}
 

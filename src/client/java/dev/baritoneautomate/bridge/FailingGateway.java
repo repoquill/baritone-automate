@@ -129,6 +129,11 @@ abstract class FailingGateway implements BaritoneGateway {
 	}
 
 	@Override
+	public GatewayStatus resetAllSettings() {
+		return fail();
+	}
+
+	@Override
 	public PathingSnapshot observe() {
 		return PathingSnapshot.absent(reason());
 	}
