@@ -3,8 +3,9 @@ package dev.baritoneautomate.inventory;
 import java.util.function.Predicate;
 
 /**
- * Thin inventory port. Crafting and smelting are placeholders: Baritone has no
- * speedrun API, and those steps are not covered by pathing processes.
+ * Thin inventory port. Craft and smelt use the vanilla crafting grid and furnace.
+ * {@link ActionResult.Status#OK} means the output count actually increased.
+ * {@link ActionResult.Status#PENDING} means the station is still working.
  */
 public interface InventoryAccess {
 	boolean available();

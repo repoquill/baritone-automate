@@ -10,6 +10,7 @@ import dev.baritoneautomate.bridge.ProcessKind;
 import dev.baritoneautomate.bridge.ProcessOutcome;
 import dev.baritoneautomate.inventory.ActionResult;
 import java.util.List;
+import java.util.Locale;
 
 /**
  * Mine obsidian until the inventory actually has ten, then place a frame and use
@@ -20,8 +21,10 @@ final class NetherPortalPhase implements PhaseHandler {
 	private static final int MAX_IGNITE_ATTEMPTS = 60;
 	private final long timeoutMillis;
 	private final MineLoop mines = new MineLoop(3);
+	private final MineLoop gravel = new MineLoop(3);
 	private final PathRequests paths = new PathRequests();
 	private int igniteAttempts;
+	private boolean miningFlint;
 
 	NetherPortalPhase(long timeoutMillis) {
 		this.timeoutMillis = timeoutMillis;
@@ -35,7 +38,9 @@ final class NetherPortalPhase implements PhaseHandler {
 	@Override
 	public void onEnter(PhaseContext context) {
 		mines.reset();
+		gravel.reset();
 		igniteAttempts = 0;
+		miningFlint = false;
 		if (left(context) || context.inventory().count("obsidian") >= OBSIDIAN) {
 			return;
 		}
@@ -59,15 +64,63 @@ final class NetherPortalPhase implements PhaseHandler {
 			return mines.afterShortfall(context, OBSIDIAN, List.of("obsidian"), "mining obsidian");
 		}
 		stopMine(context);
+		if (miningFlint) {
+			if (hasIgniter(context) || context.inventory().count("flint") > 0) {
+				miningFlint = false;
+			} else {
+				PhaseTick mined = gravel.afterShortfall(context, 1, List.of("gravel"), "mining gravel for flint");
+				if (mined.signal() == dev.baritoneautomate.automate.PhaseSignal.FAIL) {
+					return PhaseTick.fail("no flint to craft flint and steel");
+				}
+				return mined;
+			}
+		}
 		if (igniteAttempts >= MAX_IGNITE_ATTEMPTS) {
 			return PhaseTick.fail("ignition did not create a portal");
 		}
-		igniteAttempts++;
 		ActionResult attempt = context.world().lightNetherPortal();
-		if (attempt.status() == ActionResult.Status.MISSING || attempt.status() == ActionResult.Status.UNAVAILABLE) {
-			return PhaseTick.fail(attempt.message());
+		if (attempt.status() == ActionResult.Status.PENDING) {
+			return PhaseTick.cont(attempt.message());
 		}
-		return PhaseTick.cont(attempt.message());
+		if (attempt.status() == ActionResult.Status.OK) {
+			igniteAttempts++;
+			return PhaseTick.cont(attempt.message());
+		}
+		if (attempt.status() == ActionResult.Status.MISSING && igniterMissing(attempt.message())) {
+			return craftIgniter(context);
+		}
+		return PhaseTick.fail(attempt.message());
+	}
+
+	private PhaseTick craftIgniter(PhaseContext context) {
+		ActionResult crafted = context.inventory().craft("flint_and_steel", 1);
+		if (hasIgniter(context)) {
+			return PhaseTick.cont(crafted.message());
+		}
+		if (crafted.status() == ActionResult.Status.PENDING) {
+			return PhaseTick.cont(crafted.message());
+		}
+		if (crafted.status() == ActionResult.Status.OK) {
+			return PhaseTick.fail("flint and steel craft reported success but the inventory did not change");
+		}
+		if (context.inventory().count("flint") == 0
+				&& context.inventory().count("iron_ingot") > 0
+				&& crafted.message().toLowerCase(Locale.ROOT).contains("flint")) {
+			miningFlint = true;
+			gravel.reset();
+			gravel.start(context, 1, List.of("gravel"));
+			return PhaseTick.cont("mining gravel for flint");
+		}
+		return PhaseTick.fail(crafted.message());
+	}
+
+	private static boolean hasIgniter(PhaseContext context) {
+		return context.inventory().count("flint_and_steel") > 0 || context.inventory().count("fire_charge") > 0;
+	}
+
+	private static boolean igniterMissing(String message) {
+		String text = message == null ? "" : message.toLowerCase(Locale.ROOT);
+		return text.contains("flint") || text.contains("fire charge") || text.contains("igniter");
 	}
 
 	@Override

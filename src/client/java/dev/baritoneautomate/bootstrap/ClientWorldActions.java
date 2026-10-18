@@ -2,9 +2,13 @@ package dev.baritoneautomate.bootstrap;
 
 import dev.baritoneautomate.automate.BlockPosView;
 import dev.baritoneautomate.inventory.ActionResult;
+import dev.baritoneautomate.inventory.HotbarMove;
 import dev.baritoneautomate.inventory.ItemIds;
 import java.util.ArrayList;
 import java.util.List;
+import net.minecraft.world.inventory.AbstractContainerMenu;
+import net.minecraft.world.inventory.ContainerInput;
+import net.minecraft.world.inventory.Slot;
 import java.util.function.Predicate;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
@@ -107,13 +111,25 @@ public final class ClientWorldActions {
 		if (findNearbyBlock("nether_portal", 8) != null) {
 			return ActionResult.ok("portal is already lit");
 		}
-		if (!hotbarHas(player, "flint_and_steel") && !hotbarHas(player, "fire_charge")) {
-			return ActionResult.missing("put flint and steel or a fire charge on the hotbar");
-		}
-		if (!hotbarHas(player, "obsidian")) {
-			return ActionResult.missing("put obsidian on the hotbar");
+		ActionResult igniter = ensureSelected(player, "no flint and steel or fire charge in the inventory", "flint_and_steel", "fire_charge");
+		if (igniter.status() != ActionResult.Status.OK) {
+			return igniter;
 		}
 		List<BlockPos> frame = frame(player);
+		boolean frameMissing = false;
+		for (BlockPos cell : frame) {
+			BlockState state = player.level().getBlockState(cell);
+			if (state.getBlock() != Blocks.OBSIDIAN) {
+				frameMissing = true;
+				break;
+			}
+		}
+		if (frameMissing) {
+			ActionResult obsidian = ensureSelected(player, "no obsidian in the inventory", "obsidian");
+			if (obsidian.status() != ActionResult.Status.OK) {
+				return obsidian;
+			}
+		}
 		for (BlockPos cell : frame) {
 			BlockState state = player.level().getBlockState(cell);
 			if (state.getBlock() == Blocks.OBSIDIAN) {
@@ -127,8 +143,9 @@ public final class ClientWorldActions {
 			}
 			return ActionResult.ok("placing the portal frame");
 		}
-		if (!selectHotbar(player, "flint_and_steel") && !selectHotbar(player, "fire_charge")) {
-			return ActionResult.missing("put flint and steel or a fire charge on the hotbar");
+		ActionResult igniterAgain = ensureSelected(player, "no flint and steel or fire charge in the inventory", "flint_and_steel", "fire_charge");
+		if (igniterAgain.status() != ActionResult.Status.OK) {
+			return igniterAgain;
 		}
 		BlockPos base = frameBase(player);
 		Vec3 hit = Vec3.atCenterOf(base).add(0.0, 0.5, 0.0);
@@ -214,8 +231,65 @@ public final class ClientWorldActions {
 		return id != null && ItemIds.matches(id.toString(), entityId);
 	}
 
-	private static boolean hotbarHas(LocalPlayer player, String itemId) {
-		return hotbarSlot(player, itemId) >= 0;
+	static ActionResult ensureSelected(LocalPlayer player, String missingMessage, String... itemIds) {
+		Minecraft minecraft = Minecraft.getInstance();
+		if (player == null || minecraft.gameMode == null) {
+			return ActionResult.unavailable("no world");
+		}
+		HotbarMove.Decision decision = HotbarMove.decide(slotIds(player), missingMessage, itemIds);
+		if (decision.kind() == HotbarMove.Kind.MISSING) {
+			return ActionResult.missing(decision.message());
+		}
+		if (decision.kind() == HotbarMove.Kind.SELECT) {
+			player.getInventory().setSelectedSlot(decision.hotbarSlot());
+			return ActionResult.ok(decision.message());
+		}
+		if (player.containerMenu != player.inventoryMenu) {
+			player.closeContainer();
+			return ActionResult.pending("closing a container before moving " + ItemIds.path(decision.itemId()));
+		}
+		int menuSlot = menuSlot(player, decision.inventorySlot());
+		if (menuSlot < 0) {
+			return ActionResult.unavailable("could not find " + ItemIds.path(decision.itemId()) + " in the inventory menu");
+		}
+		minecraft.gameMode.handleContainerInput(
+				player.inventoryMenu.containerId,
+				menuSlot,
+				decision.hotbarSlot(),
+				ContainerInput.SWAP,
+				player);
+		player.getInventory().setSelectedSlot(decision.hotbarSlot());
+		return ActionResult.ok(decision.message());
+	}
+
+	private static List<String> slotIds(LocalPlayer player) {
+		Inventory inventory = player.getInventory();
+		int size = Math.max(41, inventory.getContainerSize());
+		List<String> slots = new ArrayList<>();
+		for (int slot = 0; slot < size; slot++) {
+			ItemStack stack = slot < inventory.getContainerSize() ? inventory.getItem(slot) : ItemStack.EMPTY;
+			slots.add(itemId(stack));
+		}
+		return slots;
+	}
+
+	private static int menuSlot(LocalPlayer player, int inventorySlot) {
+		AbstractContainerMenu menu = player.inventoryMenu;
+		for (int index = 0; index < menu.slots.size(); index++) {
+			Slot slot = menu.getSlot(index);
+			if (slot.container == player.getInventory() && slot.getContainerSlot() == inventorySlot) {
+				return index;
+			}
+		}
+		return -1;
+	}
+
+	private static String itemId(ItemStack stack) {
+		if (stack == null || stack.isEmpty()) {
+			return "";
+		}
+		Identifier id = BuiltInRegistries.ITEM.getKey(stack.getItem());
+		return id == null ? "" : id.toString();
 	}
 
 	private static boolean selectHotbar(LocalPlayer player, String itemId) {

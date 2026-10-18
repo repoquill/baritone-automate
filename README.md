@@ -70,7 +70,7 @@ Baritone 是 LGPL-3.0，本模组源码是 MIT。另装、不打包，见 `NOTIC
 - **bridge**：`BaritoneGateway` 是唯一封装。pause 用我们自己的 `REQUEST_PAUSE` Process（Baritone 的 `#pause` 命令是私有的，注释写明不要用反射去调）。另有 resume、cancel、forceCancel、CustomGoal、goto、thisway、mine、explore、follow、farm、路点、Settings 读写和类型元数据、pathing / Process 观测。
 - **automate**：`IDLE | RUNNING | PAUSED | COMBAT | FAILED | CANCELLED | DONE`。取消进行中的一局会回到 `IDLE`（`CANCELLED` 仍留在枚举里，不再作为取消终态）。阶段 `CHECK → EARLY_WOOD → IRON → DIAMOND → NETHER_PORTAL → BLAZE_PEARL → STRONGHOLD → ENTER_END → END_APPROACH → CRYSTALS → DRAGON → DONE`。挖矿要库存达标才前进，Process 结束不够就再挖。下界门会尝试搭框并点火。烈焰珍珠会在下界追击，要塞会扔末影之眼，进末地会走向末地门。末地接近 `gotoXZ(0, 0)`，水晶要扫完环，龙在交战过后消失算击败。有跳过、暂停、超时（默认重试一次再失败）、失败后 `continueRun()`。
 - **combat**：末地水晶接近后攻击；龙低速贴地近战，否则热键栏拉弓。低血量回调会暂停 Run，不判失败。可取消。
-- **inventory**：计数、热键栏选物。`craft` / `smelt` 返回 `UNSUPPORTED`。
+- **inventory**：计数、从整个背包把物品换到热键栏。`craft` / `smelt` 走工作台和熔炉；材料不够、没有工作台/熔炉或被挡住时失败，库存没变化不算成功。
 
 ## 开放问题的默认
 

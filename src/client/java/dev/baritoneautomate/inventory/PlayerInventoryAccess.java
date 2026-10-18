@@ -8,7 +8,7 @@ import net.minecraft.resources.Identifier;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.item.ItemStack;
 
-/** Live player inventory. Craft and smelt stay unsupported in this slice. */
+/** Live player inventory. Craft and smelt run through {@link dev.baritoneautomate.bootstrap.ClientStation}. */
 public final class PlayerInventoryAccess implements InventoryAccess {
 	@Override
 	public boolean available() {
@@ -69,12 +69,12 @@ public final class PlayerInventoryAccess implements InventoryAccess {
 
 	@Override
 	public ActionResult craft(String outputItemId, int count) {
-		return ActionResult.unsupported("crafting is an inventory stub in this slice");
+		return dev.baritoneautomate.bootstrap.ClientStation.craft(outputItemId, count);
 	}
 
 	@Override
 	public ActionResult smelt(String inputItemId, int count) {
-		return ActionResult.unsupported("smelting is an inventory stub in this slice");
+		return dev.baritoneautomate.bootstrap.ClientStation.smelt(inputItemId, count);
 	}
 
 	private static int matching(ItemStack stack, Predicate<String> normalizedItemId) {

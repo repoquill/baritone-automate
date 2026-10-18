@@ -251,6 +251,59 @@ class RunControllerTest {
 	}
 
 	@Test
+	void ironSmeltsThenCraftsAPick() {
+		Harness harness = reach(RunPhase.IRON);
+		harness.inventory.set("stone_pickaxe", 1);
+		harness.inventory.set("raw_iron", 3);
+		harness.inventory.set("stick", 2);
+		harness.inventory.set("coal", 1);
+		harness.runs.tick();
+		assertEquals(3, harness.inventory.count("iron_ingot"));
+		assertEquals(0, harness.inventory.count("raw_iron"));
+		assertEquals(RunPhase.IRON, harness.runs.snapshot().phase());
+		harness.runs.tick();
+		assertTrue(harness.inventory.count("iron_pickaxe") >= 1);
+		assertEquals(RunPhase.NETHER_PORTAL, harness.runs.snapshot().phase());
+	}
+
+	@Test
+	void ironFailsWhenFuelIsMissing() {
+		Harness harness = reach(RunPhase.IRON);
+		harness.inventory.set("stone_pickaxe", 1);
+		harness.inventory.set("raw_iron", 3);
+		harness.runs.tick();
+		assertEquals(RunState.FAILED, harness.runs.snapshot().state());
+		assertTrue(harness.runs.snapshot().failureReason().contains("fuel"));
+	}
+
+	@Test
+	void strongholdCraftsEyesFromPearlsAndPowder() {
+		Harness harness = reach(RunPhase.STRONGHOLD);
+		harness.inventory.set("ender_pearl", 1);
+		harness.inventory.set("blaze_powder", 1);
+		harness.runs.tick();
+		assertTrue(harness.inventory.count("ender_eye") >= 1);
+		assertEquals(RunPhase.STRONGHOLD, harness.runs.snapshot().phase());
+		assertEquals(RunState.RUNNING, harness.runs.snapshot().state());
+	}
+
+	@Test
+	void strongholdSearchesWhenNoFrameIsVisible() {
+		Harness harness = reach(RunPhase.STRONGHOLD);
+		harness.inventory.set("ender_eye", 4);
+		harness.world.pos = new BlockPosView(0, 64, 0);
+		harness.runs.tick();
+		assertEquals(RunPhase.STRONGHOLD, harness.runs.snapshot().phase());
+		assertEquals(RunState.RUNNING, harness.runs.snapshot().state());
+		assertTrue(harness.world.uses >= 1);
+		harness.clock.now = 1_000L;
+		harness.runs.tick();
+		assertEquals(RunPhase.STRONGHOLD, harness.runs.snapshot().phase());
+		assertTrue(harness.gateway.explores >= 1);
+		assertTrue(harness.runs.snapshot().detail().contains("stronghold") || harness.runs.snapshot().detail().contains("eye"));
+	}
+
+	@Test
 	void strongholdFailsWithoutEyes() {
 		Harness harness = reach(RunPhase.STRONGHOLD);
 		harness.world.dimension = "minecraft:the_nether";
@@ -447,12 +500,12 @@ class RunControllerTest {
 
 		@Override
 		public ActionResult craft(String outputItemId, int count) {
-			return ActionResult.unsupported("stub");
+			return dev.baritoneautomate.inventory.CraftRecipes.craft(counts, outputItemId, count, true);
 		}
 
 		@Override
 		public ActionResult smelt(String inputItemId, int count) {
-			return ActionResult.unsupported("stub");
+			return dev.baritoneautomate.inventory.CraftRecipes.smelt(counts, inputItemId, count, true, true);
 		}
 	}
 

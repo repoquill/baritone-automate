@@ -9,15 +9,17 @@ import dev.baritoneautomate.automate.RunPhase;
 import dev.baritoneautomate.inventory.ActionResult;
 
 /**
- * Throw eyes of ender and walk toward them until an end portal frame is in reach.
- * Crafting an eye is attempted once; if that cannot run, the phase fails instead of waiting.
+ * Craft eyes if needed, throw them, follow the eye, then explore toward the landing.
+ * A missing frame is not an immediate failure; eight throws with no frame fails outright.
  */
 final class StrongholdPhase implements PhaseHandler {
 	private static final long TIMEOUT = 8 * 60_000L;
 	private static final long THROW_GAP_MILLIS = 4_000L;
+	private static final int MAX_THROWS = 8;
 	private final PathRequests paths = new PathRequests();
 	private long lastThrowAt = Long.MIN_VALUE;
-	private boolean craftAttempted;
+	private int throwsSoFar;
+	private BlockPosView lastEye;
 
 	@Override
 	public RunPhase phase() {
@@ -27,7 +29,8 @@ final class StrongholdPhase implements PhaseHandler {
 	@Override
 	public void onEnter(PhaseContext context) {
 		lastThrowAt = Long.MIN_VALUE;
-		craftAttempted = false;
+		throwsSoFar = 0;
+		lastEye = null;
 	}
 
 	@Override
@@ -44,30 +47,51 @@ final class StrongholdPhase implements PhaseHandler {
 			return PhaseTick.cont("pathing to the stronghold");
 		}
 		if (context.inventory().count("ender_eye") <= 0) {
-			if (!craftAttempted) {
-				craftAttempted = true;
-				ActionResult crafted = context.inventory().craft("ender_eye", 1);
-				if (context.inventory().count("ender_eye") > 0) {
-					return PhaseTick.cont(crafted.message());
-				}
-				return PhaseTick.fail("no ender eyes to throw; " + crafted.message());
+			int before = 0;
+			ActionResult crafted = context.inventory().craft("ender_eye", 1);
+			if (context.inventory().count("ender_eye") > before) {
+				return PhaseTick.cont(crafted.message());
 			}
-			return PhaseTick.fail("no ender eyes to throw");
+			if (crafted.status() == ActionResult.Status.PENDING) {
+				return PhaseTick.cont(crafted.message());
+			}
+			if (crafted.status() == ActionResult.Status.OK) {
+				return PhaseTick.fail("no ender eyes to throw; craft reported success but the inventory did not change");
+			}
+			return PhaseTick.fail("no ender eyes to throw; " + crafted.message());
 		}
 		BlockPosView eye = context.world().findNearbyEntity("minecraft:eye_of_ender", 64.0);
 		if (eye != null) {
+			lastEye = eye;
 			paths.approach(context, "eye", eye);
 			return PhaseTick.cont("following an eye of ender");
 		}
-		if (context.nowMillis() - lastThrowAt < THROW_GAP_MILLIS) {
-			return PhaseTick.cont("waiting to throw another eye");
+		if (lastThrowAt != Long.MIN_VALUE && context.nowMillis() - lastThrowAt < THROW_GAP_MILLIS) {
+			return search(context);
 		}
 		ActionResult thrown = context.world().useItem("ender_eye");
 		lastThrowAt = context.nowMillis();
-		if (thrown.status() != ActionResult.Status.OK) {
+		if (thrown.status() != ActionResult.Status.OK && thrown.status() != ActionResult.Status.PENDING) {
 			return PhaseTick.fail(thrown.message());
 		}
+		throwsSoFar++;
+		if (throwsSoFar >= MAX_THROWS) {
+			return PhaseTick.fail("threw eyes of ender but no end portal frame was found");
+		}
 		return PhaseTick.cont("throwing an eye of ender");
+	}
+
+	private PhaseTick search(PhaseContext context) {
+		if (lastEye != null && !PhaseSupport.close(context, lastEye, 8.0)) {
+			paths.approach(context, "eye-landing", lastEye);
+			return PhaseTick.cont("walking toward where the eye landed");
+		}
+		BlockPosView feet = context.world().blockPos();
+		if (feet != null) {
+			int spread = 32 + throwsSoFar * 16;
+			paths.explore(context, feet.x() + spread, feet.z());
+		}
+		return PhaseTick.cont("searching for the stronghold");
 	}
 
 	@Override

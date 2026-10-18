@@ -9,7 +9,6 @@ import java.util.List;
 
 public final class EarlyPhases {
 	private static final long THREE_MINUTES = 3 * 60_000L;
-	private static final long EIGHT_MINUTES = 8 * 60_000L;
 	private static final long TEN_MINUTES = 10 * 60_000L;
 	private static final List<String> LOGS = List.of(
 			"oak_log",
@@ -25,7 +24,7 @@ public final class EarlyPhases {
 	}
 
 	public static List<PhaseHandler> all() {
-		return List.of(check(), wood(), iron(), diamond(), netherPortal());
+		return List.of(check(), wood(), new IronPhase(), new DiamondPhase(), netherPortal());
 	}
 
 	private static PhaseHandler check() {
@@ -69,28 +68,6 @@ public final class EarlyPhases {
 				"mining logs",
 				"logs gathered",
 				THREE_MINUTES);
-	}
-
-	private static PhaseHandler iron() {
-		return new GatherPhase(
-				RunPhase.IRON,
-				16,
-				List.of("iron_ore", "deepslate_iron_ore"),
-				context -> context.inventory().countAny("raw_iron", "iron_ingot", "iron_ore", "deepslate_iron_ore") > 0,
-				"mining iron",
-				"iron gathered",
-				EIGHT_MINUTES);
-	}
-
-	private static PhaseHandler diamond() {
-		return new GatherPhase(
-				RunPhase.DIAMOND,
-				8,
-				List.of("diamond_ore", "deepslate_diamond_ore"),
-				context -> context.inventory().countAny("diamond", "diamond_ore", "deepslate_diamond_ore") > 0,
-				"mining diamonds",
-				"diamond step finished",
-				TEN_MINUTES);
 	}
 
 	private static PhaseHandler netherPortal() {

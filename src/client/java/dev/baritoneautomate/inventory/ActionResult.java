@@ -5,6 +5,7 @@ import java.util.Locale;
 public record ActionResult(Status status, String message) {
 	public enum Status {
 		OK,
+		PENDING,
 		UNSUPPORTED,
 		UNAVAILABLE,
 		MISSING
@@ -18,6 +19,10 @@ public record ActionResult(Status status, String message) {
 
 	public static ActionResult ok(String message) {
 		return new ActionResult(Status.OK, message);
+	}
+
+	public static ActionResult pending(String message) {
+		return new ActionResult(Status.PENDING, message);
 	}
 
 	public static ActionResult missing(String message) {
