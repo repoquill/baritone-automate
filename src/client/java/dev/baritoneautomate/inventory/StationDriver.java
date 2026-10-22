@@ -22,28 +22,52 @@ public final class StationDriver {
 		job = null;
 	}
 
+	public static boolean hasPendingAction() {
+		return job != null;
+	}
+
+	public static ActionResult tickPendingAction(StationPorts ports) {
+		if (job == null) {
+			return ActionResult.ok("no pending inventory action");
+		}
+		return job.smelt ? smelt(ports, job.input, job.times) : craft(ports, job.output, job.times);
+	}
+
+	public static void cancel(StationPorts ports) {
+		if (job != null) {
+			finish(ports);
+		}
+	}
+
 	public static ActionResult craft(StationPorts ports, String outputId, int count) {
 		if (ports == null || !ports.inWorld()) {
-			reset();
+			finish(ports);
 			return ActionResult.unavailable("no world");
 		}
 		String output = ItemIds.normalize(outputId);
 		int times = Math.max(1, count);
 		int have = ports.count(output);
 		if (job == null || job.smelt || !output.equals(job.output)) {
+			cancel(ports);
+			ActionResult cleared = ports.clearCraftingGrid();
+			if (cleared.status() != ActionResult.Status.OK) {
+				return cleared;
+			}
+			have = ports.count(output);
 			boolean table = ports.blockNearby("crafting_table") || ports.count("crafting_table") > 0;
 			ActionResult preview = CraftRecipes.craft(ports.snapshot(), output, times, table);
 			if (preview.status() != ActionResult.Status.OK) {
-				reset();
+				finish(ports);
 				return preview;
 			}
-			job = new Job(output, have + times, false, "");
+			CraftRecipes.Recipe recipe = CraftRecipes.recipe(output);
+			job = new Job(output, Math.addExact(have, Math.multiplyExact(times, recipe.outputCount())), false, "", times);
 		}
 		if (ports.count(output) >= job.target) {
 			finish(ports);
 			return ActionResult.ok("crafted " + ItemIds.path(output));
 		}
-		if (job.ticks++ > CRAFT_BUDGET) {
+		if (job.ticks++ > (long) CRAFT_BUDGET * job.times) {
 			finish(ports);
 			return ActionResult.unavailable("crafting did not produce " + ItemIds.path(output));
 		}
@@ -52,29 +76,41 @@ public final class StationDriver {
 
 	public static ActionResult smelt(StationPorts ports, String inputId, int count) {
 		if (ports == null || !ports.inWorld()) {
-			reset();
+			finish(ports);
 			return ActionResult.unavailable("no world");
 		}
-		if (!"raw_iron".equals(ItemIds.path(inputId))) {
+		if (!ItemIds.matches(inputId, "raw_iron")) {
 			return ActionResult.unsupported("no smelt recipe for " + ItemIds.path(inputId));
 		}
 		int times = Math.max(1, count);
 		int have = ports.count("iron_ingot");
 		if (job == null || !job.smelt || !ItemIds.matches(job.input, inputId)) {
+			cancel(ports);
+			have = ports.count("iron_ingot");
 			boolean furnace = ports.blockNearby("furnace") || ports.count("furnace") > 0;
 			boolean table = ports.blockNearby("crafting_table") || ports.count("crafting_table") > 0;
-			ActionResult preview = CraftRecipes.smelt(ports.snapshot(), inputId, times, furnace, table);
+			Map<String, Integer> previewItems = ports.snapshot();
+			if (ports.menu() == MenuKind.FURNACE) {
+				if (ports.furnaceIngredientMatches("raw_iron")) {
+					previewItems.merge("minecraft:raw_iron", ports.furnaceIngredientCount(), Integer::sum);
+				}
+				if (ports.furnaceLit() || !ports.furnaceFuelEmpty()) {
+					// The live step checks fuel again when the existing burn or queued fuel runs out.
+					previewItems.merge("minecraft:coal", (int) ((times + 7L) / 8L), Integer::sum);
+				}
+			}
+			ActionResult preview = CraftRecipes.smelt(previewItems, inputId, times, furnace, table);
 			if (preview.status() != ActionResult.Status.OK) {
-				reset();
+				finish(ports);
 				return preview;
 			}
-			job = new Job("minecraft:iron_ingot", have + times, true, ItemIds.normalize(inputId));
+			job = new Job("minecraft:iron_ingot", Math.addExact(have, times), true, ItemIds.normalize(inputId), times);
 		}
 		if (ports.count("iron_ingot") >= job.target) {
 			finish(ports);
 			return ActionResult.ok("smelted iron_ingot");
 		}
-		if (job.ticks++ > 220L * times + 200L) {
+		if (job.ticks++ > 220L * job.times + 200L) {
 			finish(ports);
 			return ActionResult.unavailable("furnace did not produce iron_ingot");
 		}
@@ -85,8 +121,9 @@ public final class StationDriver {
 	}
 
 	private static ActionResult craftNested(StationPorts ports, String output) {
+		output = ItemIds.normalize(output);
 		if (job.nested == null || !output.equals(job.nested.output)) {
-			job.nested = new Job(ItemIds.normalize(output), ports.count(output) + 1, false, "");
+			job.nested = new Job(output, ports.count(output) + 1, false, "", 1);
 		}
 		if (ports.count(output) >= job.nested.target) {
 			job.nested = null;
@@ -101,7 +138,7 @@ public final class StationDriver {
 			return ActionResult.pending(step.message());
 		}
 		if (step.status() != ActionResult.Status.PENDING) {
-			reset();
+			finish(ports);
 		}
 		return step;
 	}
@@ -109,8 +146,9 @@ public final class StationDriver {
 	private static ActionResult stepCraft(StationPorts ports) {
 		CraftRecipes.Recipe recipe = CraftRecipes.recipe(job.focus().output);
 		if (recipe == null) {
-			reset();
-			return ActionResult.unsupported("no recipe for " + ItemIds.path(job.focus().output));
+			String output = job.focus().output;
+			finish(ports);
+			return ActionResult.unsupported("no recipe for " + ItemIds.path(output));
 		}
 		if (!recipe.outputId().equals(job.output) && ports.count(recipe.outputId()) >= job.focus().target) {
 			job.focusStack.pop();
@@ -118,14 +156,27 @@ public final class StationDriver {
 			job.wait = 0;
 			return ActionResult.pending("crafted " + ItemIds.path(recipe.outputId()));
 		}
+		if (recipe.needsTable()) {
+			ActionResult opened = openTable(ports);
+			if (opened != null) {
+				return opened;
+			}
+		} else if (ports.menu() != MenuKind.PLAYER) {
+			ports.closeMenu();
+			return ActionResult.pending("closing the container");
+		}
 		if (job.cell == 0) {
+			ActionResult cleared = ports.clearCraftingGrid();
+			if (cleared.status() != ActionResult.Status.OK) {
+				return cleared;
+			}
 			for (CraftRecipes.Need need : recipe.needs()) {
 				if (CraftRecipes.countToken(ports.snapshot(), need.token()) >= need.count()) {
 					continue;
 				}
-				String producer = producer(need.token());
+				String producer = CraftRecipes.producer(ports.snapshot(), need.token());
 				if (producer == null) {
-					reset();
+					finish(ports);
 					return ActionResult.missing("missing " + ItemIds.path(need.token()));
 				}
 				if (!job.crafting(producer)) {
@@ -138,37 +189,29 @@ public final class StationDriver {
 				return ActionResult.pending("crafting " + ItemIds.path(producer));
 			}
 		}
-		if (recipe.needsTable()) {
-			ActionResult opened = openTable(ports);
-			if (opened != null) {
-				return opened;
-			}
-		} else if (ports.menu() != MenuKind.PLAYER) {
-			ports.closeMenu();
-			return ActionResult.pending("closing the container");
-		}
 		if (job.cell < recipe.grid().size()) {
 			String token = recipe.grid().get(job.cell);
 			int width = recipe.gridWidth();
 			int x = job.cell % width;
 			int y = job.cell / width;
-			job.cell++;
 			if (token != null && !token.isBlank()) {
 				ActionResult placed = ports.placeOne(token, StationSlots.craftSlot(width, x, y));
 				if (placed.status() != ActionResult.Status.OK) {
 					if (placed.status() != ActionResult.Status.PENDING) {
-						reset();
+						finish(ports);
 					}
 					return placed;
 				}
+				job.cell++;
 				return ActionResult.pending("placing " + ItemIds.path(token));
 			}
+			job.cell++;
 			return ActionResult.pending("crafting " + ItemIds.path(recipe.outputId()));
 		}
 		if (ports.craftResultEmpty()) {
 			if (job.wait++ > RESULT_WAIT) {
 				String produced = ItemIds.path(recipe.outputId());
-				reset();
+				finish(ports);
 				return ActionResult.unavailable("recipe did not produce " + produced);
 			}
 			return ActionResult.pending("waiting for " + ItemIds.path(recipe.outputId()));
@@ -177,14 +220,6 @@ public final class StationDriver {
 		job.cell = 0;
 		job.wait = 0;
 		return ActionResult.pending("taking " + ItemIds.path(recipe.outputId()));
-	}
-
-	private static String producer(String token) {
-		if ("planks".equals(ItemIds.path(token))) {
-			return "minecraft:oak_planks";
-		}
-		CraftRecipes.Recipe recipe = CraftRecipes.recipe(token);
-		return recipe == null ? null : recipe.outputId();
 	}
 
 	private static ActionResult openTable(StationPorts ports) {
@@ -202,7 +237,7 @@ public final class StationDriver {
 		if (ports.blockNearby("crafting_table")) {
 			ActionResult used = ports.useBlock("crafting_table");
 			if (used.status() != ActionResult.Status.OK && used.status() != ActionResult.Status.PENDING) {
-				reset();
+				finish(ports);
 				return used;
 			}
 			return ActionResult.pending("opening the crafting table");
@@ -211,7 +246,7 @@ public final class StationDriver {
 			ActionResult placed = ports.placeBlock("crafting_table", "no crafting table in the inventory");
 			if (placed.status() != ActionResult.Status.OK) {
 				if (placed.status() != ActionResult.Status.PENDING) {
-					reset();
+					finish(ports);
 				}
 				return placed;
 			}
@@ -223,7 +258,7 @@ public final class StationDriver {
 			job.wait = 0;
 			return ActionResult.pending("crafting a crafting table");
 		}
-		reset();
+		finish(ports);
 		return ActionResult.unavailable("no crafting table nearby");
 	}
 
@@ -236,84 +271,80 @@ public final class StationDriver {
 			if (ports.blockNearby("furnace")) {
 				ActionResult used = ports.useBlock("furnace");
 				if (used.status() != ActionResult.Status.OK && used.status() != ActionResult.Status.PENDING) {
-					reset();
+					finish(ports);
 					return used;
 				}
 				return ActionResult.pending("opening the furnace");
 			}
 			if (ports.count("furnace") <= 0) {
-				reset();
+				finish(ports);
 				return ActionResult.unavailable("no furnace nearby");
 			}
 			ActionResult placed = ports.placeBlock("furnace", "no furnace in the inventory");
 			if (placed.status() != ActionResult.Status.OK) {
 				if (placed.status() != ActionResult.Status.PENDING) {
-					reset();
+					finish(ports);
 				}
 				return placed;
 			}
 			return ActionResult.pending("placing a furnace");
 		}
-		if (ports.furnaceIngredientEmpty()) {
+		if (!ports.furnaceResultEmpty()) {
+			ports.quickMove(StationSlots.FURNACE_RESULT);
+			return ActionResult.pending("taking iron ingots");
+		}
+		if (!ports.furnaceIngredientEmpty() && !ports.furnaceIngredientMatches("raw_iron")) {
+			finish(ports);
+			return ActionResult.unavailable("furnace input is busy with another item");
+		}
+		int remaining = job.target - ports.count("iron_ingot");
+		int inputTarget = Math.min(remaining, 64);
+		if (ports.furnaceIngredientCount() < inputTarget && ports.count("raw_iron") > 0) {
 			job.wait = 0;
 			ActionResult placed = ports.placeOne("raw_iron", StationSlots.FURNACE_INGREDIENT);
 			if (placed.status() != ActionResult.Status.OK) {
 				if (placed.status() != ActionResult.Status.PENDING) {
-					reset();
+					finish(ports);
 				}
 				return placed;
 			}
 			return ActionResult.pending("putting raw iron in the furnace");
 		}
-		if (ports.furnaceFuelEmpty()) {
-			String fuel = fuelToken(ports);
+		if (ports.furnaceIngredientEmpty()) {
+			if (job.wait++ > RESULT_WAIT) {
+				finish(ports);
+				return ActionResult.missing("missing raw_iron");
+			}
+			return ActionResult.pending("waiting for the furnace result");
+		}
+		if (ports.furnaceFuelEmpty() && !ports.furnaceLit()) {
+			String fuel = CraftRecipes.fuelToken(ports.snapshot());
 			if (fuel == null) {
-				reset();
+				finish(ports);
 				return ActionResult.missing("missing fuel");
 			}
 			ActionResult placed = ports.placeOne(fuel, StationSlots.FURNACE_FUEL);
 			if (placed.status() != ActionResult.Status.OK) {
 				if (placed.status() != ActionResult.Status.PENDING) {
-					reset();
+					finish(ports);
 				}
 				return placed;
 			}
 			return ActionResult.pending("adding fuel");
 		}
-		if (!ports.furnaceResultEmpty()) {
-			ports.quickMove(StationSlots.FURNACE_RESULT);
-			return ActionResult.pending("taking iron ingots");
-		}
 		if (!ports.furnaceLit() && job.wait++ > 40) {
-			reset();
+			finish(ports);
 			return ActionResult.unavailable("furnace is not burning");
 		}
 		return ActionResult.pending("smelting raw iron");
 	}
 
-	private static String fuelToken(StationPorts ports) {
-		Map<String, Integer> counts = ports.snapshot();
-		if (CraftRecipes.countToken(counts, "coal") > 0) {
-			return "coal";
-		}
-		if (CraftRecipes.countToken(counts, "charcoal") > 0) {
-			return "charcoal";
-		}
-		if (CraftRecipes.countToken(counts, "planks") > 0) {
-			return "planks";
-		}
-		if (CraftRecipes.countToken(counts, "log") > 0) {
-			return "log";
-		}
-		if (CraftRecipes.countToken(counts, "stick") > 0) {
-			return "stick";
-		}
-		return null;
-	}
-
 	private static void finish(StationPorts ports) {
-		if (ports != null && ports.inWorld() && ports.menu() != MenuKind.PLAYER) {
-			ports.closeMenu();
+		if (ports != null && ports.inWorld()) {
+			ports.clearCraftingGrid();
+			if (ports.menu() != MenuKind.PLAYER) {
+				ports.closeMenu();
+			}
 		}
 		job = null;
 	}
@@ -323,17 +354,19 @@ public final class StationDriver {
 		private final int target;
 		private final boolean smelt;
 		private final String input;
+		private final int times;
 		private final ArrayDeque<Focus> focusStack = new ArrayDeque<>();
 		private Job nested;
 		private int cell;
 		private int wait;
 		private int ticks;
 
-		private Job(String output, int target, boolean smelt, String input) {
+		private Job(String output, int target, boolean smelt, String input, int times) {
 			this.output = output;
 			this.target = target;
 			this.smelt = smelt;
 			this.input = input;
+			this.times = times;
 			this.focusStack.push(new Focus(output, target));
 		}
 

@@ -4,6 +4,7 @@ import dev.baritoneautomate.automate.phases.EarlyPhases;
 import dev.baritoneautomate.automate.phases.LatePhases;
 import dev.baritoneautomate.bridge.BaritoneGateway;
 import dev.baritoneautomate.combat.CombatSession;
+import dev.baritoneautomate.inventory.ActionResult;
 import dev.baritoneautomate.inventory.InventoryAccess;
 import java.util.EnumMap;
 import java.util.List;
@@ -27,6 +28,7 @@ public final class RunController {
 	private RunState resumeState = RunState.RUNNING;
 	private int attempt;
 	private long phaseStartedAt;
+	private long pausedAt;
 	private String detail = "";
 	private String failureReason = "";
 	private boolean skipDiamond;
@@ -62,7 +64,7 @@ public final class RunController {
 				inventory,
 				combat,
 				world,
-				System::currentTimeMillis,
+				() -> System.nanoTime() / 1_000_000L,
 				log,
 				TimeoutPolicy.retryOnceThenFail());
 	}
@@ -82,7 +84,10 @@ public final class RunController {
 			return false;
 		}
 		combat.cancel();
+		combat.setPaused(false);
+		inventory.cancelPendingAction();
 		gateway.cancel();
+		world.resetActions();
 		failureReason = "";
 		detail = "starting";
 		log.info("Run starting at CHECK");
@@ -97,6 +102,7 @@ public final class RunController {
 		resumeState = state;
 		gateway.pause();
 		combat.setPaused(true);
+		pausedAt = clock.millis();
 		state = RunState.PAUSED;
 		log.info("Run paused in " + phase);
 		return true;
@@ -118,7 +124,7 @@ public final class RunController {
 		gateway.resume();
 		combat.setPaused(false);
 		state = resumeState == RunState.PAUSED ? RunState.RUNNING : resumeState;
-		phaseStartedAt = clock.millis();
+		phaseStartedAt += Math.max(0L, clock.millis() - pausedAt);
 		log.info("Run resumed in " + phase);
 		return true;
 	}
@@ -144,8 +150,10 @@ public final class RunController {
 	public void cancel() {
 		combat.cancel();
 		combat.setPaused(false);
+		inventory.cancelPendingAction();
 		gateway.resume();
 		gateway.forceCancel();
+		world.resetActions();
 		if (!state.active()) {
 			return;
 		}
@@ -167,6 +175,7 @@ public final class RunController {
 		detail = "";
 		failureReason = "";
 		combat.setPaused(false);
+		inventory.cancelPendingAction();
 	}
 
 	public boolean skipPhase() {
@@ -191,6 +200,15 @@ public final class RunController {
 		if (!state.active() || state == RunState.PAUSED) {
 			return;
 		}
+		if (phase != RunPhase.CHECK) {
+			if (!world.inGame()) {
+				return;
+			}
+			if (!world.alive()) {
+				fail("player is not alive");
+				return;
+			}
+		}
 		if (phase == RunPhase.DONE) {
 			state = RunState.DONE;
 			detail = "run complete";
@@ -210,7 +228,24 @@ public final class RunController {
 			onTimeout(handler);
 			return;
 		}
-		PhaseTick result = handler.onTick(context());
+		PhaseTick result;
+		try {
+			if (inventory.hasPendingAction()) {
+				ActionResult pending = inventory.tickPendingAction();
+				if (pending.status() == ActionResult.Status.PENDING) {
+					detail = pending.message();
+					return;
+				}
+				if (pending.status() != ActionResult.Status.OK) {
+					fail(pending.message());
+					return;
+				}
+			}
+			result = handler.onTick(context());
+		} catch (RuntimeException failure) {
+			fail("error in " + phase + ": " + failure);
+			return;
+		}
 		if (!result.detail().isBlank()) {
 			detail = result.detail();
 		}
@@ -223,7 +258,8 @@ public final class RunController {
 	}
 
 	public RunSnapshot snapshot() {
-		long elapsed = state == RunState.IDLE ? 0L : Math.max(0L, clock.millis() - phaseStartedAt);
+		long now = state == RunState.PAUSED ? pausedAt : clock.millis();
+		long elapsed = state == RunState.IDLE ? 0L : Math.max(0L, now - phaseStartedAt);
 		return new RunSnapshot(state, phase, attempt, detail, failureReason, elapsed, skipDiamond);
 	}
 
@@ -233,6 +269,7 @@ public final class RunController {
 		switch (action) {
 			case RETRY -> {
 				gateway.cancel();
+				inventory.cancelPendingAction();
 				if (phase.usesCombat()) {
 					combat.cancel();
 				}
@@ -240,7 +277,7 @@ public final class RunController {
 				phaseStartedAt = clock.millis();
 				detail = "retry " + attempt;
 				state = phase.usesCombat() ? RunState.COMBAT : RunState.RUNNING;
-				handler.onEnter(context());
+				enterHandler(handler);
 			}
 			case PAUSE -> {
 				phaseStartedAt = clock.millis();
@@ -252,6 +289,7 @@ public final class RunController {
 	}
 
 	private void advance() {
+		inventory.cancelPendingAction();
 		gateway.cancel();
 		RunPhase next = phase.next();
 		if (next == null) {
@@ -284,7 +322,15 @@ public final class RunController {
 		log.info("Entered " + next);
 		PhaseHandler handler = handlers.get(next);
 		if (handler != null) {
+			enterHandler(handler);
+		}
+	}
+
+	private void enterHandler(PhaseHandler handler) {
+		try {
 			handler.onEnter(context());
+		} catch (RuntimeException failure) {
+			fail("error entering " + phase + ": " + failure);
 		}
 	}
 
@@ -292,6 +338,7 @@ public final class RunController {
 		gateway.cancel();
 		combat.cancel();
 		combat.setPaused(false);
+		inventory.cancelPendingAction();
 		state = RunState.FAILED;
 		failureReason = reason == null || reason.isBlank() ? "failed" : reason;
 		detail = failureReason;

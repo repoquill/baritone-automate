@@ -38,6 +38,14 @@ final class StrongholdPhase implements PhaseHandler {
 		if (Dimensions.isEnd(context.world().dimensionId())) {
 			return PhaseTick.advance("already in the end");
 		}
+		if (Dimensions.isNether(context.world().dimensionId())) {
+			BlockPosView portal = context.world().findNearbyBlock("nether_portal", 16);
+			if (portal == null) {
+				return PhaseTick.fail("return to the overworld through a nether portal before throwing ender eyes");
+			}
+			paths.gotoBlock(context, "return-portal", portal);
+			return PhaseTick.cont("returning to the overworld");
+		}
 		BlockPosView frame = PhaseSupport.firstBlock(context, 16, "end_portal_frame", "end_portal");
 		if (frame != null) {
 			if (PhaseSupport.close(context, frame, 6.0)) {
@@ -45,6 +53,18 @@ final class StrongholdPhase implements PhaseHandler {
 			}
 			paths.gotoBlock(context, "frame", frame);
 			return PhaseTick.cont("pathing to the stronghold");
+		}
+		BlockPosView eye = context.world().findNearbyEntity("minecraft:eye_of_ender", 64.0);
+		if (eye != null) {
+			lastEye = eye;
+			paths.approach(context, "eye", eye);
+			return PhaseTick.cont("following an eye of ender");
+		}
+		if (lastThrowAt != Long.MIN_VALUE && context.nowMillis() - lastThrowAt < THROW_GAP_MILLIS) {
+			return search(context);
+		}
+		if (throwsSoFar >= MAX_THROWS) {
+			return PhaseTick.fail("threw eyes of ender but no end portal frame was found");
 		}
 		if (context.inventory().count("ender_eye") <= 0) {
 			int before = 0;
@@ -60,24 +80,15 @@ final class StrongholdPhase implements PhaseHandler {
 			}
 			return PhaseTick.fail("no ender eyes to throw; " + crafted.message());
 		}
-		BlockPosView eye = context.world().findNearbyEntity("minecraft:eye_of_ender", 64.0);
-		if (eye != null) {
-			lastEye = eye;
-			paths.approach(context, "eye", eye);
-			return PhaseTick.cont("following an eye of ender");
-		}
-		if (lastThrowAt != Long.MIN_VALUE && context.nowMillis() - lastThrowAt < THROW_GAP_MILLIS) {
-			return search(context);
-		}
 		ActionResult thrown = context.world().useItem("ender_eye");
-		lastThrowAt = context.nowMillis();
-		if (thrown.status() != ActionResult.Status.OK && thrown.status() != ActionResult.Status.PENDING) {
+		if (thrown.status() == ActionResult.Status.PENDING) {
+			return PhaseTick.cont(thrown.message());
+		}
+		if (thrown.status() != ActionResult.Status.OK) {
 			return PhaseTick.fail(thrown.message());
 		}
+		lastThrowAt = context.nowMillis();
 		throwsSoFar++;
-		if (throwsSoFar >= MAX_THROWS) {
-			return PhaseTick.fail("threw eyes of ender but no end portal frame was found");
-		}
 		return PhaseTick.cont("throwing an eye of ender");
 	}
 

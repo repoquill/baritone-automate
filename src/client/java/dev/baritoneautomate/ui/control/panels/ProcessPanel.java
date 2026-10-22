@@ -15,11 +15,11 @@ public final class ProcessPanel implements ControlPanel {
 		int y = screen.contentY();
 		int w = 52;
 		screen.addButton(Component.translatable("screen.baritone-automate.pause"), x, y, w, true,
-				button -> screen.report(screen.gateway().pause()));
+				button -> screen.pauseCurrent());
 		screen.addButton(Component.translatable("screen.baritone-automate.resume"), x + 56, y, w, true,
-				button -> screen.report(screen.gateway().resume()));
+				button -> screen.resumeCurrent());
 		screen.addButton(Component.translatable("screen.baritone-automate.cancel"), x + 112, y, w, true,
-				button -> screen.report(screen.gateway().cancel()));
+				button -> screen.cancelCurrent());
 		screen.addButton(Component.translatable("screen.baritone-automate.force"), x + 168, y, w, true,
 				button -> screen.confirmForceCancel());
 	}

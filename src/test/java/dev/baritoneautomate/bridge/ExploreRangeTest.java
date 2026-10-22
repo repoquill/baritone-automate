@@ -3,6 +3,7 @@ package dev.baritoneautomate.bridge;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import org.junit.jupiter.api.Test;
 
@@ -29,5 +30,23 @@ class ExploreRangeTest {
 	void negativeCentersStillCoverTheirChunk() {
 		assertTrue(ExploreRange.contains(-10, -10, 8, -1, -1));
 		assertFalse(ExploreRange.contains(-10, -10, 8, 2, 2));
+	}
+
+	@Test
+	void integerBoundaryCentersDoNotOverflowTheChunkBounds() {
+		assertTrue(ExploreRange.chunks(Integer.MAX_VALUE, Integer.MAX_VALUE, 32).stream()
+				.anyMatch(chunk -> chunk[0] == Math.floorDiv(Integer.MAX_VALUE, 16) && chunk[1] == Math.floorDiv(Integer.MAX_VALUE, 16)));
+		assertTrue(ExploreRange.chunks(Integer.MIN_VALUE, Integer.MIN_VALUE, 32).stream()
+				.anyMatch(chunk -> chunk[0] == Math.floorDiv(Integer.MIN_VALUE, 16) && chunk[1] == Math.floorDiv(Integer.MIN_VALUE, 16)));
+	}
+
+	@Test
+	void oversizedRangesAreRejectedBeforeAllocatingChunks() {
+		assertThrows(IllegalArgumentException.class, () -> ExploreRange.chunks(0, 0, ExploreRange.MAX_BLOCKS + 1));
+	}
+
+	@Test
+	void distantChunksCannotWrapAroundToTheCenter() {
+		assertFalse(ExploreRange.contains(0, 0, 8, 1 << 28, 0));
 	}
 }

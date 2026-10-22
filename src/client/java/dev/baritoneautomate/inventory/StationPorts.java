@@ -29,11 +29,18 @@ public interface StationPorts {
 
 	boolean furnaceIngredientEmpty();
 
+	int furnaceIngredientCount();
+
+	boolean furnaceIngredientMatches(String token);
+
 	boolean furnaceFuelEmpty();
 
 	boolean furnaceResultEmpty();
 
 	boolean furnaceLit();
+
+	/** Empty crafting input slots before starting another recipe; never take the result. */
+	ActionResult clearCraftingGrid();
 
 	/**
 	 * Pickup one matching stack and place a single item into {@code menuSlot}

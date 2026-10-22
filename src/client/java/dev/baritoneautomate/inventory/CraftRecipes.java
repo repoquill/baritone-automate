@@ -18,6 +18,8 @@ public final class CraftRecipes {
 	public record Recipe(String outputId, int outputCount, boolean needsTable, int gridWidth, List<String> grid, List<Need> needs) {
 	}
 
+	private static final List<String> WOODS = List.of("oak", "spruce", "birch", "jungle", "acacia", "dark_oak",
+			"mangrove", "cherry", "pale_oak", "poplar", "crimson", "warped");
 	private static final Map<String, Recipe> RECIPES = build();
 
 	private CraftRecipes() {
@@ -40,9 +42,11 @@ public final class CraftRecipes {
 			return ActionResult.unsupported("no recipe for " + ItemIds.path(outputId));
 		}
 		if (requested.needsTable() && !table) {
-			ActionResult tableCraft = craftOne(copy, "crafting_table", false, stack);
-			if (tableCraft.status() != ActionResult.Status.OK) {
-				return ActionResult.unavailable("no crafting table nearby");
+			if (countToken(copy, "crafting_table") == 0) {
+				ActionResult tableCraft = craftOne(copy, "crafting_table", false, stack);
+				if (tableCraft.status() != ActionResult.Status.OK) {
+					return ActionResult.unavailable("no crafting table nearby");
+				}
 			}
 			table = true;
 		}
@@ -61,7 +65,7 @@ public final class CraftRecipes {
 		if (counts == null) {
 			return ActionResult.unavailable("no inventory");
 		}
-		if (!"raw_iron".equals(ItemIds.path(inputId))) {
+		if (!ItemIds.matches(inputId, "raw_iron")) {
 			return ActionResult.unsupported("no smelt recipe for " + ItemIds.path(inputId));
 		}
 		int amount = Math.max(1, times);
@@ -100,11 +104,24 @@ public final class CraftRecipes {
 	}
 
 	public static boolean matches(String itemId, String token) {
+		String normalizedToken = ItemIds.normalize(token);
+		if (!normalizedToken.startsWith("minecraft:")) {
+			return ItemIds.matches(itemId, token);
+		}
+		if (!ItemIds.normalize(itemId).startsWith("minecraft:")) {
+			return false;
+		}
 		String path = ItemIds.path(itemId);
 		String want = ItemIds.path(token);
+		if (want.endsWith("_logs")) {
+			return want.substring(0, want.length() - 5).equals(woodType(path));
+		}
 		return switch (want) {
-			case "log" -> path.endsWith("_log") || path.endsWith("_stem");
-			case "planks" -> path.endsWith("_planks");
+			case "log" -> woodType(path) != null;
+			case "planks" -> path.endsWith("_planks")
+					&& (WOODS.contains(path.substring(0, path.length() - 7)) || path.equals("bamboo_planks"));
+			case "fuel_planks" -> matches(itemId, "planks") && !path.equals("crimson_planks") && !path.equals("warped_planks");
+			case "fuel_log" -> woodType(path) != null && !"crimson".equals(woodType(path)) && !"warped".equals(woodType(path));
 			case "cobble" -> path.equals("cobblestone") || path.equals("cobbled_deepslate");
 			default -> path.equals(want);
 		};
@@ -130,7 +147,7 @@ public final class CraftRecipes {
 					stack.pop();
 					return ActionResult.missing("missing " + ItemIds.path(need.token()));
 				}
-				String producer = producer(need.token());
+				String producer = producer(counts, need.token());
 				if (producer == null) {
 					stack.pop();
 					return ActionResult.missing("missing " + ItemIds.path(need.token()));
@@ -151,13 +168,32 @@ public final class CraftRecipes {
 		return ActionResult.ok("crafted " + ItemIds.path(outputId));
 	}
 
-	private static String producer(String token) {
+	static String producer(Map<String, Integer> counts, String token) {
 		String path = ItemIds.path(token);
 		if (path.equals("planks")) {
-			return "minecraft:oak_planks";
+			for (String wood : WOODS) {
+				if (countToken(counts, wood + "_logs") > 0) {
+					return "minecraft:" + wood + "_planks";
+				}
+			}
+			if (countToken(counts, "bamboo_block") > 0) {
+				return "minecraft:bamboo_planks";
+			}
+			return null;
 		}
 		if (recipe(token) != null) {
 			return ItemIds.normalize(token);
+		}
+		return null;
+	}
+
+	private static String woodType(String path) {
+		String unstripped = path.startsWith("stripped_") ? path.substring(9) : path;
+		for (String wood : WOODS) {
+			if (unstripped.equals(wood + "_log") || unstripped.equals(wood + "_wood")
+					|| unstripped.equals(wood + "_stem") || unstripped.equals(wood + "_hyphae")) {
+				return wood;
+			}
 		}
 		return null;
 	}
@@ -193,41 +229,39 @@ public final class CraftRecipes {
 	}
 
 	private static boolean hasFuel(Map<String, Integer> counts, int items) {
-		int sticks = countToken(counts, "stick");
-		return countToken(counts, "coal") * 8
-				+ countToken(counts, "charcoal") * 8
-				+ countToken(counts, "planks")
-				+ countToken(counts, "log")
-				+ sticks / 2 >= items;
+		return countToken(counts, "coal") * 16L
+				+ countToken(counts, "charcoal") * 16L
+				+ countToken(counts, "fuel_planks") * 3L
+				+ countToken(counts, "fuel_log") * 3L
+				+ countToken(counts, "stick") >= items * 2L;
 	}
 
 	private static void consumeFuel(Map<String, Integer> counts, int items) {
-		int left = items;
-		left = burn(counts, "coal", left, 8);
-		left = burn(counts, "charcoal", left, 8);
-		if (left > 0) {
-			int use = Math.min(left, countToken(counts, "planks"));
-			consume(counts, "planks", use);
-			left -= use;
-		}
-		if (left > 0) {
-			int use = Math.min(left, countToken(counts, "log"));
-			consume(counts, "log", use);
-			left -= use;
-		}
-		if (left > 0) {
-			consume(counts, "stick", left * 2);
-		}
+		long left = items * 2L;
+		left = burn(counts, "coal", left, 16);
+		left = burn(counts, "charcoal", left, 16);
+		left = burn(counts, "fuel_planks", left, 3);
+		left = burn(counts, "fuel_log", left, 3);
+		burn(counts, "stick", left, 1);
 	}
 
-	private static int burn(Map<String, Integer> counts, String token, int left, int value) {
+	private static long burn(Map<String, Integer> counts, String token, long left, int value) {
 		if (left <= 0) {
 			return 0;
 		}
 		int have = countToken(counts, token);
-		int use = Math.min(have, (left + value - 1) / value);
+		int use = (int) Math.min(have, (left + value - 1) / value);
 		consume(counts, token, use);
-		return Math.max(0, left - use * value);
+		return Math.max(0L, left - (long) use * value);
+	}
+
+	static String fuelToken(Map<String, Integer> counts) {
+		for (String token : List.of("coal", "charcoal", "fuel_planks", "fuel_log", "stick")) {
+			if (countToken(counts, token) > 0) {
+				return token;
+			}
+		}
+		return null;
 	}
 
 	private static void add(Map<String, Integer> counts, String itemId, int amount) {
@@ -248,7 +282,10 @@ public final class CraftRecipes {
 
 	private static Map<String, Recipe> build() {
 		Map<String, Recipe> recipes = new HashMap<>();
-		add(recipes, "oak_planks", 4, false, 2, List.of("log", "", "", ""));
+		for (String wood : WOODS) {
+			add(recipes, wood + "_planks", 4, false, 2, List.of(wood + "_logs", "", "", ""));
+		}
+		add(recipes, "bamboo_planks", 2, false, 2, List.of("bamboo_block", "", "", ""));
 		add(recipes, "stick", 4, false, 2, List.of("planks", "", "planks", ""));
 		add(recipes, "crafting_table", 1, false, 2, List.of("planks", "planks", "planks", "planks"));
 		add(recipes, "wooden_pickaxe", 1, true, 3, List.of(

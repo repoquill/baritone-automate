@@ -13,19 +13,20 @@ import java.util.List;
 import java.util.Locale;
 
 /**
- * Require an iron pick or better, mine obsidian until the inventory has ten, then
+ * Require a diamond pick or better, collect a complete supported frame, then
  * place a frame and use an igniter. The phase advances only after the dimension changes.
  */
 final class NetherPortalPhase implements PhaseHandler {
-	private static final int OBSIDIAN = 10;
+	private static final int OBSIDIAN = 14;
 	private static final int MAX_IGNITE_ATTEMPTS = 60;
-	private static final String NEED_PICK = "need iron/diamond pickaxe before mining obsidian";
+	private static final String NEED_PICK = "need diamond/netherite pickaxe before mining obsidian";
 	private final long timeoutMillis;
 	private final MineLoop mines = new MineLoop(3);
 	private final MineLoop gravel = new MineLoop(3);
 	private final PathRequests paths = new PathRequests();
 	private int igniteAttempts;
 	private boolean miningFlint;
+	private boolean building;
 
 	NetherPortalPhase(long timeoutMillis) {
 		this.timeoutMillis = timeoutMillis;
@@ -42,10 +43,11 @@ final class NetherPortalPhase implements PhaseHandler {
 		gravel.reset();
 		igniteAttempts = 0;
 		miningFlint = false;
-		if (left(context) || context.inventory().count("obsidian") >= OBSIDIAN) {
+		building = context.inventory().count("obsidian") >= OBSIDIAN || context.world().portalBuildInProgress();
+		if (left(context) || building || context.world().findNearbyBlock("nether_portal", 12) != null) {
 			return;
 		}
-		if (Supply.hasPick(context.inventory(), "iron")) {
+		if (Supply.hasPick(context.inventory(), "diamond")) {
 			mines.start(context, OBSIDIAN, List.of("obsidian"));
 		}
 	}
@@ -57,16 +59,16 @@ final class NetherPortalPhase implements PhaseHandler {
 		}
 		BlockPosView lit = context.world().findNearbyBlock("nether_portal", 12);
 		if (lit != null) {
+			paths.gotoBlock(context, "portal", lit);
 			if (PhaseSupport.close(context, lit, 1.5)) {
 				return PhaseTick.cont("standing in a lit portal");
 			}
-			paths.gotoBlock(context, "portal", lit);
 			return PhaseTick.cont("pathing into a lit portal");
 		}
-		if (context.inventory().count("obsidian") < OBSIDIAN) {
-			if (!Supply.hasPick(context.inventory(), "iron")) {
+		if (!building && context.inventory().count("obsidian") < OBSIDIAN) {
+			if (!Supply.hasPick(context.inventory(), "diamond")) {
 				PhaseTick secured = securePick(context);
-				if (!Supply.hasPick(context.inventory(), "iron")) {
+				if (!Supply.hasPick(context.inventory(), "diamond")) {
 					return secured;
 				}
 			}
@@ -75,7 +77,7 @@ final class NetherPortalPhase implements PhaseHandler {
 			}
 			return mines.afterShortfall(context, OBSIDIAN, List.of("obsidian"), "mining obsidian");
 		}
-		stopMine(context);
+		building = true;
 		if (miningFlint) {
 			if (hasIgniter(context) || context.inventory().count("flint") > 0) {
 				miningFlint = false;
@@ -90,6 +92,7 @@ final class NetherPortalPhase implements PhaseHandler {
 		if (igniteAttempts >= MAX_IGNITE_ATTEMPTS) {
 			return PhaseTick.fail("ignition did not create a portal");
 		}
+		stopMine(context);
 		ActionResult attempt = context.world().lightNetherPortal();
 		if (attempt.status() == ActionResult.Status.PENDING) {
 			return PhaseTick.cont(attempt.message());
@@ -105,19 +108,10 @@ final class NetherPortalPhase implements PhaseHandler {
 	}
 
 	private PhaseTick securePick(PhaseContext context) {
-		int ingots = context.inventory().count("iron_ingot");
-		int raw = context.inventory().count("raw_iron");
-		if (ingots < 3 && raw > 0 && ingots + raw >= 3) {
-			PhaseTick smelted = Supply.smelt(context, "raw_iron", Math.min(raw, 3 - ingots));
-			if (smelted.signal() == dev.baritoneautomate.automate.PhaseSignal.FAIL) {
-				return PhaseTick.fail(NEED_PICK + "; " + smelted.detail());
-			}
-			return smelted;
-		}
-		if (ingots >= 3) {
-			PhaseTick crafted = Supply.craft(context, "iron_pickaxe");
-			if (Supply.hasPick(context.inventory(), "iron")) {
-				return PhaseTick.cont("iron pick ready");
+		if (context.inventory().count("diamond") >= 3) {
+			PhaseTick crafted = Supply.craft(context, "diamond_pickaxe");
+			if (Supply.hasPick(context.inventory(), "diamond")) {
+				return PhaseTick.cont("diamond pick ready");
 			}
 			if (crafted.signal() == dev.baritoneautomate.automate.PhaseSignal.FAIL) {
 				return PhaseTick.fail(NEED_PICK + "; " + crafted.detail());

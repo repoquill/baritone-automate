@@ -48,6 +48,10 @@ final class MineLoop {
 		}
 		ProcessSnapshot process = context.gateway().currentProcess();
 		if (tracked < 0L || process.generation() != tracked) {
+			start(context, quantity, blockIds);
+			if (error != null) {
+				return PhaseTick.fail(error);
+			}
 			return PhaseTick.cont(progress);
 		}
 		if (process.outcome() == ProcessOutcome.RUNNING || process.outcome() == ProcessOutcome.IDLE) {

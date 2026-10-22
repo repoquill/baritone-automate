@@ -9,7 +9,7 @@ Minecraft **26.3** Fabric **客户端**模组。另装 Baritone，由本模组�
 需要你自己的客户端，本仓库不带游戏、也不带可玩的 Baritone 模组。
 
 1. 安装 Minecraft **26.3**、Fabric Loader **0.19.5 或更高**（仍须支持 26.3）、Fabric API。
-2. 把发布用的 `baritone-automate-0.1.0.jar` 放进 `mods`。这个 JAR **没有嵌套 Baritone**。
+2. 把发布用的 `baritone-automate-0.1.2.jar` 放进 `mods`。这个 JAR **没有嵌套 Baritone**。
 3. **另装自编译**的 Baritone Fabric 模组（同一次源码构建里的 `baritone-fabric-1.20.0.jar`）。`libs/baritone-api-fabric-1.20.0.jar` 只给编译用，不要把它当运行模组。步骤见 [docs/baritone-build.md](docs/baritone-build.md)。
 4. 启动客户端，进世界后按 `K` 打开操作台。没装 Baritone 时模组仍会加载，寻路按钮停用并出横幅。
 
@@ -20,9 +20,9 @@ export JAVA_HOME=/path/to/jdk-25
 ./gradlew build
 ```
 
-产物在 `build/libs/baritone-automate-0.1.0.jar`。`verifyBaritoneNotNested` 会确认里面没有 `baritone/` 类。
+产物在 `build/libs/baritone-automate-0.1.2.jar`。`verifyBaritoneNotNested` 会确认里面没有 `baritone/` 类。
 
-操作台、设置和阶段机在静态构建与单测里已经接上。**不能把「一键通关已经能打完末影龙」当成已验收。** 进游戏联调仍要自备 MC 26.3、自编译 Baritone 和 Fabric。
+修复记录和验证范围见 [docs/bugfix-report.md](docs/bugfix-report.md)。操作台、设置和阶段机在静态构建与单测里已经接上。**不能把「一键通关已经能打完末影龙」当成已验收。** 进游戏联调仍要自备 MC 26.3、自编译 Baritone 和 Fabric。
 
 ## 版本
 
@@ -49,7 +49,7 @@ export JAVA_HOME=/path/to/jdk-25
 ./gradlew build
 ```
 
-产物：`build/libs/baritone-automate-0.1.0.jar`。里面没有 Baritone 类。运行前把自编译的 `baritone-fabric-1.20.0.jar` 放进 mods 目录。编译 API 的步骤见 [docs/baritone-build.md](docs/baritone-build.md)。
+产物：`build/libs/baritone-automate-0.1.2.jar`。里面没有 Baritone 类。运行前把自编译的 `baritone-fabric-1.20.0.jar` 放进 mods 目录。编译 API 的步骤见 [docs/baritone-build.md](docs/baritone-build.md)。
 
 Baritone 是 LGPL-3.0，本模组源码是 MIT。另装、不打包，见 `NOTICE`。
 
@@ -75,7 +75,7 @@ Baritone 是 LGPL-3.0，本模组源码是 MIT。另装、不打包，见 `NOTIC
 进世界后按 `K`。操作台不暂停游戏。
 
 - 顶栏是进程、是否在寻路、ETA。ETA 来自 Baritone 的估算 tick（20 tick 记 1 秒），文案带「约」。
-- 底栏：暂停 / 继续 / 取消 / 强取，外加设置。强取会再确认一次。这四个按钮打的是 Baritone 进程，不是通关状态机。
+- 底栏：暂停 / 继续 / 取消 / 强取，外加设置。强取会再确认一次。通关运行时，这四个按钮统一控制通关、战斗和容器操作；空闲时控制 Baritone 进程。
 - 页签：控制、目标、挖掘、探索、跟随、路点、通关。
 - 通关页的「一键通关（至屠龙）」走 `RunController.start()`。失败后可以「继续」。取消会停战斗、`forceCancel`，然后回到 `IDLE`。
 - Baritone 在 `fabric.mod.json` 里是 `suggests`，不是硬依赖。没装时模组仍会加载，`isBaritonePresent()` 为 false，日志写明寻路不可用，操作台可以出横幅。横幅同样覆盖「类在，但 Provider 还没就绪」。
@@ -88,9 +88,9 @@ Baritone 是 LGPL-3.0，本模组源码是 MIT。另装、不打包，见 `NOTIC
 
 - **bootstrap**：客户端入口、Baritone 类探测、缺失时降级到 `AbsentBaritoneGateway`、客户端 tick、热键 stub。
 - **bridge**：`BaritoneGateway` 是唯一封装。pause 用我们自己的 `REQUEST_PAUSE` Process（Baritone 的 `#pause` 命令是私有的，注释写明不要用反射去调）。另有 resume、cancel、forceCancel、CustomGoal、goto、thisway、mine、explore、follow、farm、路点、Settings 读写和类型元数据、pathing / Process 观测。
-- **automate**：`IDLE | RUNNING | PAUSED | COMBAT | FAILED | CANCELLED | DONE`。取消进行中的一局会回到 `IDLE`（`CANCELLED` 仍留在枚举里，不再作为取消终态）。阶段 `CHECK → EARLY_WOOD → IRON → DIAMOND → NETHER_PORTAL → BLAZE_PEARL → STRONGHOLD → ENTER_END → END_APPROACH → CRYSTALS → DRAGON → DONE`。挖矿要库存达标才前进，Process 结束不够就再挖。下界门在挖黑曜石前要有铁镐或更好的镐（跳过钻石时会先烧铁、合成铁镐，原料不够就失败）。烈焰珍珠会在下界追击，要塞会扔末影之眼。进末地看见空的末地门框时用末影之眼逐个填上，门亮了再站进去。末地接近 `gotoXZ(0, 0)`，水晶要扫完环，龙在交战过后消失算击败。有跳过、暂停、超时（默认重试一次再失败）、失败后 `continueRun()`。
-- **combat**：末地水晶接近后攻击；龙低速贴地近战，否则热键栏拉弓。低血量回调会暂停 Run，不判失败。可取消。
-- **inventory**：计数、从整个背包把物品换到热键栏。`craft` / `smelt` 按 26.3 的工作台 3×3、背包 2×2 和熔炉槽位一步步放料、等待、取出；材料不够、没有工作台/熔炉、容器忙或被挡住时失败，库存没变化不算成功。
+- **automate**：`IDLE | RUNNING | PAUSED | COMBAT | FAILED | CANCELLED | DONE`。取消进行中的一局会回到 `IDLE`（`CANCELLED` 仍留在枚举里，不再作为取消终态）。阶段 `CHECK → EARLY_WOOD → IRON → DIAMOND → NETHER_PORTAL → BLAZE_PEARL → STRONGHOLD → ENTER_END → END_APPROACH → CRYSTALS → DRAGON → DONE`。挖矿要库存达标才前进，Process 结束不够就再挖。下界门采集黑曜石必须有钻石镐或下界合金镐；跳过钻石阶段后仍需满足这个条件，或自备 14 块黑曜石。建造时固定位置和朝向，放置含四角的完整门框，避免无支撑的放置失败。烈焰珍珠会在下界追击并更新移动目标，要塞阶段先经传送门返回主世界，再扔末影之眼。进末地看见空的末地门框时用末影之眼逐个填上，门亮了再站进去。末地接近 `gotoXZ(0, 0)`，水晶要扫完环，龙在交战过后消失算击败。有跳过、暂停、超时（默认重试一次再失败）、失败后 `continueRun()`。
+- **combat**：末地水晶接近后攻击；龙低速贴地近战，否则热键栏拉弓。弓箭会瞄准、蓄力并释放；近战攻击龙的可受击部位。低血量回调会暂停 Run，不判失败。可取消。
+- **inventory**：计数、从整个背包把物品换到热键栏。`craft` / `smelt` 按 26.3 的工作台 3×3、背包 2×2 和熔炉槽位一步步放料、等待、取出；材料不够、没有工作台/熔炉、容器忙或被挡住时失败，库存没变化不算成功。合成中的材料由同一容器任务持续管理，取消、失败和跳过阶段时会清理任务并返还合成格原料。
 
 ## 开放问题的默认
 

@@ -139,6 +139,163 @@ class StationDriverTest {
 		assertEquals(0, station.count("iron_ingot"));
 	}
 
+	@Test
+	void requestedCraftCountMeansCompleteRecipeBatches() {
+		SimStation station = new SimStation();
+		station.set("oak_planks", 4);
+		ActionResult result = pump(station, () -> StationDriver.craft(station, "stick", 2));
+		assertEquals(ActionResult.Status.OK, result.status());
+		assertEquals(8, station.count("stick"));
+		assertEquals(0, station.count("oak_planks"));
+	}
+
+	@Test
+	void pendingIngredientPlacementRetriesTheSameCell() {
+		SimStation station = new SimStation();
+		station.set("oak_planks", 2);
+		station.pendingClicks = 1;
+		ActionResult result = pump(station, () -> StationDriver.craft(station, "stick", 1));
+		assertEquals(ActionResult.Status.OK, result.status(), result.message());
+		assertEquals(4, station.count("stick"));
+		assertEquals(List.of(1, 3), station.placed);
+	}
+
+	@Test
+	void finishedIngotIsTakenBeforeRequestingMoreOreOrFuel() {
+		SimStation station = new SimStation();
+		station.furnaceNearby = true;
+		station.set("raw_iron", 1);
+		station.set("coal", 1);
+		for (int i = 0; i < 3; i++) {
+			assertEquals(ActionResult.Status.PENDING, StationDriver.smelt(station, "raw_iron", 1).status());
+		}
+		station.ingredient = "";
+		station.fuel = "";
+		station.furnaceResult = "minecraft:iron_ingot";
+		ActionResult result = pump(station, () -> StationDriver.smelt(station, "raw_iron", 1));
+		assertEquals(ActionResult.Status.OK, result.status(), result.message());
+		assertEquals(1, station.count("iron_ingot"));
+	}
+
+	@Test
+	void burningFurnaceDoesNotRequireAnotherFuelItem() {
+		SimStation station = new SimStation();
+		station.furnaceNearby = true;
+		station.set("raw_iron", 1);
+		station.set("coal", 1);
+		for (int i = 0; i < 3; i++) {
+			StationDriver.smelt(station, "raw_iron", 1);
+		}
+		station.fuel = "";
+		station.smeltLeft = 100;
+		assertEquals(ActionResult.Status.PENDING, StationDriver.smelt(station, "raw_iron", 1).status());
+	}
+
+	@Test
+	void woodenPickCanBeCraftedThroughItsIntermediateRecipes() {
+		SimStation station = new SimStation();
+		station.set("oak_log", 4);
+		ActionResult result = pump(station, () -> StationDriver.craft(station, "wooden_pickaxe", 1));
+		assertEquals(ActionResult.Status.OK, result.status(), result.message());
+		assertEquals(1, station.count("wooden_pickaxe"));
+	}
+
+	@Test
+	void smeltingCanFirstCraftAndPlaceTheMissingFurnace() {
+		SimStation station = new SimStation();
+		station.tableNearby = true;
+		station.set("cobblestone", 8);
+		station.set("raw_iron", 1);
+		station.set("coal", 1);
+		ActionResult result = pump(station, () -> StationDriver.smelt(station, "raw_iron", 1));
+		assertEquals(ActionResult.Status.OK, result.status(), result.message());
+		assertTrue(station.furnaceNearby);
+		assertEquals(1, station.count("iron_ingot"));
+	}
+
+	@Test
+	void cancellingReturnsIngredientsAndAllowsTheNextCraft() {
+		SimStation station = new SimStation();
+		station.set("oak_planks", 2);
+		assertEquals(ActionResult.Status.PENDING, StationDriver.craft(station, "stick", 1).status());
+		assertEquals(1, station.count("oak_planks"));
+		StationDriver.cancel(station);
+		assertFalse(StationDriver.hasPendingAction());
+		assertEquals(2, station.count("oak_planks"));
+		assertEquals(ActionResult.Status.OK, pump(station, () -> StationDriver.craft(station, "stick", 1)).status());
+	}
+
+	@Test
+	void furnaceLoadsTheBatchBeforeBurningItsOnlyFuel() {
+		SimStation station = new SimStation();
+		station.furnaceNearby = true;
+		station.set("raw_iron", 3);
+		station.set("coal", 1);
+		ActionResult result = pump(station, () -> StationDriver.smelt(station, "raw_iron", 3));
+		assertEquals(ActionResult.Status.OK, result.status(), result.message());
+		assertEquals(3, station.count("iron_ingot"));
+		assertEquals(1, station.placed.stream().filter(slot -> slot == StationSlots.FURNACE_FUEL).count());
+	}
+
+	@Test
+	void smeltingMoreThanOneStackWaitsForSpaceInTheInputSlot() {
+		SimStation station = new SimStation();
+		station.furnaceNearby = true;
+		station.set("raw_iron", 65);
+		station.set("coal", 9);
+		ActionResult result = ActionResult.pending("start");
+		for (int i = 0; i < 1_000 && result.status() == ActionResult.Status.PENDING; i++) {
+			result = StationDriver.smelt(station, "raw_iron", 65);
+		}
+		assertEquals(ActionResult.Status.OK, result.status(), result.message());
+		assertEquals(65, station.count("iron_ingot"));
+		assertEquals(0, station.count("raw_iron"));
+	}
+
+	@Test
+	void largeCraftBatchesHaveEnoughTimeToComplete() {
+		SimStation station = new SimStation();
+		station.set("oak_planks", 128);
+		ActionResult result = ActionResult.pending("start");
+		for (int i = 0; i < 600 && result.status() == ActionResult.Status.PENDING; i++) {
+			result = StationDriver.craft(station, "stick", 64);
+		}
+		assertEquals(ActionResult.Status.OK, result.status(), result.message());
+		assertEquals(256, station.count("stick"));
+	}
+
+	@Test
+	void anAlreadyBurningFurnaceCanFinishItsExistingInput() {
+		SimStation station = new SimStation();
+		station.furnaceNearby = true;
+		station.menu = MenuKind.FURNACE;
+		station.ingredient = "minecraft:raw_iron";
+		station.ingredientCount = 1;
+		station.lit = true;
+		station.smeltLeft = 4;
+		ActionResult result = pump(station, () -> StationDriver.smelt(station, "raw_iron", 1));
+		assertEquals(ActionResult.Status.OK, result.status(), result.message());
+		assertEquals(1, station.count("iron_ingot"));
+		assertTrue(station.placed.isEmpty());
+	}
+
+	@Test
+	void unrelatedFurnaceInputIsNotFueledOrReplaced() {
+		SimStation station = new SimStation();
+		station.furnaceNearby = true;
+		station.menu = MenuKind.FURNACE;
+		station.ingredient = "minecraft:raw_gold";
+		station.ingredientCount = 1;
+		station.set("raw_iron", 1);
+		station.set("coal", 1);
+		ActionResult result = StationDriver.smelt(station, "raw_iron", 1);
+		assertEquals(ActionResult.Status.UNAVAILABLE, result.status());
+		assertTrue(result.message().contains("busy"));
+		assertTrue(station.placed.isEmpty());
+		assertEquals(1, station.count("raw_iron"));
+		assertEquals(1, station.count("coal"));
+	}
+
 	private static ActionResult pump(SimStation station, java.util.function.Supplier<ActionResult> step) {
 		ActionResult result = ActionResult.pending("start");
 		int guard = 0;
@@ -171,6 +328,7 @@ class StationDriverTest {
 		private boolean furnaceNearby;
 		private boolean spotBlocked;
 		private boolean clicksBusy;
+		private int pendingClicks;
 		private boolean refuseOpen;
 		private boolean lightFuel = true;
 		private boolean openedCrafting;
@@ -179,6 +337,7 @@ class StationDriverTest {
 		private int smeltLeft;
 		private boolean lit;
 		private String ingredient = "";
+		private int ingredientCount;
 		private String fuel = "";
 		private String furnaceResult = "";
 		private String craftResult = "";
@@ -231,6 +390,16 @@ class StationDriverTest {
 		}
 
 		@Override
+		public int furnaceIngredientCount() {
+			return ingredient.isEmpty() ? 0 : ingredientCount;
+		}
+
+		@Override
+		public boolean furnaceIngredientMatches(String token) {
+			return CraftRecipes.matches(ingredient, token);
+		}
+
+		@Override
 		public boolean furnaceFuelEmpty() {
 			return fuel.isEmpty();
 		}
@@ -240,7 +409,7 @@ class StationDriverTest {
 			if (!furnaceResult.isEmpty()) {
 				return false;
 			}
-			if (ingredient.isEmpty() || fuel.isEmpty() || !lit) {
+			if (ingredient.isEmpty() || !lit) {
 				return true;
 			}
 			if (smeltLeft > 0) {
@@ -250,7 +419,10 @@ class StationDriverTest {
 				return true;
 			}
 			furnaceResult = "minecraft:iron_ingot";
-			ingredient = "";
+			if (--ingredientCount <= 0) {
+				ingredient = "";
+			}
+			smeltLeft = smeltDelay;
 			return false;
 		}
 
@@ -260,9 +432,30 @@ class StationDriverTest {
 		}
 
 		@Override
+		public ActionResult clearCraftingGrid() {
+			if (menu == MenuKind.PLAYER || menu == MenuKind.CRAFTING) {
+				for (int i = 0; i < grid.size(); i++) {
+					if (!grid.get(i).isBlank()) {
+						give(grid.get(i), 1);
+						grid.set(i, "");
+					}
+				}
+				craftResult = "";
+			}
+			return ActionResult.ok("crafting grid is empty");
+		}
+
+		@Override
 		public ActionResult placeOne(String token, int menuSlot) {
+			if (pendingClicks > 0) {
+				pendingClicks--;
+				return ActionResult.pending("waiting for container sync");
+			}
 			if (clicksBusy) {
 				return ActionResult.unavailable("container is busy");
+			}
+			if (menu == MenuKind.FURNACE && menuSlot == StationSlots.FURNACE_INGREDIENT && ingredientCount >= 64) {
+				return ActionResult.unavailable("furnace input slot is full");
 			}
 			String taken = take(token);
 			if (taken == null) {
@@ -271,6 +464,7 @@ class StationDriverTest {
 			if (menu == MenuKind.FURNACE) {
 				if (menuSlot == StationSlots.FURNACE_INGREDIENT) {
 					ingredient = taken;
+					ingredientCount++;
 				} else if (menuSlot == StationSlots.FURNACE_FUEL) {
 					fuel = taken;
 					lit = lightFuel;

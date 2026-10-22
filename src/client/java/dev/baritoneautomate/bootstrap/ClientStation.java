@@ -15,6 +15,7 @@ import net.minecraft.core.Direction;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.Identifier;
 import net.minecraft.world.InteractionHand;
+import net.minecraft.world.InteractionResult;
 import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.minecraft.world.inventory.AbstractFurnaceMenu;
 import net.minecraft.world.inventory.ContainerInput;
@@ -47,6 +48,14 @@ public final class ClientStation {
 
 	public static ActionResult smelt(String inputId, int count) {
 		return StationDriver.smelt(PORTS, inputId, count);
+	}
+
+	public static ActionResult tickPendingAction() {
+		return StationDriver.tickPendingAction(PORTS);
+	}
+
+	public static void cancelPendingAction() {
+		StationDriver.cancel(PORTS);
 	}
 
 	private static final class MinecraftPorts implements StationPorts {
@@ -105,6 +114,20 @@ public final class ClientStation {
 		}
 
 		@Override
+		public int furnaceIngredientCount() {
+			LocalPlayer player = player();
+			return player == null || menu() != MenuKind.FURNACE ? 0
+					: player.containerMenu.getSlot(AbstractFurnaceMenu.INGREDIENT_SLOT).getItem().getCount();
+		}
+
+		@Override
+		public boolean furnaceIngredientMatches(String token) {
+			LocalPlayer player = player();
+			return player != null && menu() == MenuKind.FURNACE
+					&& CraftRecipes.matches(itemId(player.containerMenu.getSlot(AbstractFurnaceMenu.INGREDIENT_SLOT).getItem()), token);
+		}
+
+		@Override
 		public boolean furnaceFuelEmpty() {
 			return slotEmpty(AbstractFurnaceMenu.FUEL_SLOT);
 		}
@@ -123,14 +146,49 @@ public final class ClientStation {
 		}
 
 		@Override
+		public ActionResult clearCraftingGrid() {
+			LocalPlayer player = player();
+			if (player == null || Minecraft.getInstance().gameMode == null) {
+				return ActionResult.unavailable("no world");
+			}
+			if (!player.containerMenu.getCarried().isEmpty()) {
+				return ActionResult.unavailable("container cursor is busy");
+			}
+			int cells = switch (menu()) {
+				case PLAYER -> 4;
+				case CRAFTING -> 9;
+				default -> 0;
+			};
+			boolean clearing = false;
+			for (int slot = 1; slot <= cells; slot++) {
+				if (!slotEmpty(slot)) {
+					quickMove(slot);
+					clearing = true;
+				}
+			}
+			return clearing ? ActionResult.pending("clearing the crafting grid") : ActionResult.ok("crafting grid is empty");
+		}
+
+		@Override
 		public ActionResult placeOne(String token, int menuSlot) {
 			LocalPlayer player = player();
 			if (player == null || Minecraft.getInstance().gameMode == null) {
 				return ActionResult.unavailable("no world");
 			}
+			if (!player.containerMenu.getCarried().isEmpty()) {
+				return ActionResult.unavailable("container cursor is busy");
+			}
 			int source = findInventorySlot(player, token);
 			if (source < 0) {
 				return ActionResult.missing("missing " + ItemIds.path(token));
+			}
+			if (menuSlot < 0 || menuSlot >= player.containerMenu.slots.size()
+					|| !player.containerMenu.getSlot(menuSlot).mayPlace(player.containerMenu.getSlot(source).getItem())
+					|| (!slotEmpty(menuSlot) && (!ItemStack.isSameItemSameComponents(
+							player.containerMenu.getSlot(menuSlot).getItem(), player.containerMenu.getSlot(source).getItem())
+							|| player.containerMenu.getSlot(menuSlot).getItem().getCount()
+									>= player.containerMenu.getSlot(menuSlot).getItem().getMaxStackSize()))) {
+				return ActionResult.unavailable("container input slot is busy");
 			}
 			click(player, source, 0, ContainerInput.PICKUP);
 			click(player, menuSlot, 1, ContainerInput.PICKUP);
@@ -157,12 +215,13 @@ public final class ClientStation {
 			if (nearby == null) {
 				return ActionResult.missing("no " + ItemIds.path(blockId) + " nearby");
 			}
-			Vec3 hit = Vec3.atCenterOf(nearby);
-			Minecraft.getInstance().gameMode.useItemOn(
+			Vec3 hit = Vec3.atCenterOf(nearby).add(0.0, 0.5, 0.0);
+			InteractionResult used = Minecraft.getInstance().gameMode.useItemOn(
 					player,
 					InteractionHand.MAIN_HAND,
 					new BlockHitResult(hit, Direction.UP, nearby, false));
-			return ActionResult.pending("opening the " + ItemIds.path(blockId));
+			return used.consumesAction() ? ActionResult.pending("opening the " + ItemIds.path(blockId))
+					: ActionResult.unavailable("could not open the " + ItemIds.path(blockId));
 		}
 
 		@Override
@@ -237,8 +296,8 @@ public final class ClientStation {
 			}
 		}
 		Vec3 hit = Vec3.atCenterOf(clicked).add(face.getStepX() * 0.5, face.getStepY() * 0.5, face.getStepZ() * 0.5);
-		Minecraft.getInstance().gameMode.useItemOn(player, InteractionHand.MAIN_HAND, new BlockHitResult(hit, face, clicked, false));
-		return ActionResult.ok("placed a block");
+		InteractionResult used = Minecraft.getInstance().gameMode.useItemOn(player, InteractionHand.MAIN_HAND, new BlockHitResult(hit, face, clicked, false));
+		return used.consumesAction() ? ActionResult.ok("placed a block") : ActionResult.unavailable("could not place the block");
 	}
 
 	private static BlockPos nearbyBlock(LocalPlayer player, String blockId, int radius) {

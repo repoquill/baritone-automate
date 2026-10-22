@@ -1,6 +1,8 @@
 package dev.baritoneautomate.ui.control;
 
 import dev.baritoneautomate.bootstrap.BaritoneAutomateClient;
+import dev.baritoneautomate.automate.RunPhase;
+import dev.baritoneautomate.automate.RunState;
 import dev.baritoneautomate.bridge.BaritoneGateway;
 import dev.baritoneautomate.bridge.GatewayStatus;
 import dev.baritoneautomate.bridge.PathingSnapshot;
@@ -60,6 +62,10 @@ public final class ControlScreen extends Screen {
 	private int contentY;
 	private int contentW;
 	private int contentH;
+	private RunState builtRunState;
+	private RunPhase builtRunPhase;
+	private boolean builtSkipDiamond;
+	private boolean builtReady;
 
 	public String goalX = "0";
 	public String goalY = "64";
@@ -137,11 +143,43 @@ public final class ControlScreen extends Screen {
 	public void confirmForceCancel() {
 		this.minecraft.setScreenAndShow(new ConfirmScreen(accepted -> {
 			if (accepted) {
-				report(gateway().forceCancel());
+				if (runs().snapshot().state().active()) {
+					runs().cancel();
+					report(true, Component.translatable("screen.baritone-automate.run.cancelled").getString());
+				} else {
+					report(gateway().forceCancel());
+				}
 			}
 			this.minecraft.setScreenAndShow(this);
 		}, Component.translatable("screen.baritone-automate.force.title"),
 				Component.translatable("screen.baritone-automate.force.body")));
+	}
+
+	public void pauseCurrent() {
+		if (runs().snapshot().state().active()) {
+			boolean changed = runs().pause();
+			report(changed, Component.translatable(changed
+					? "screen.baritone-automate.run.paused" : "screen.baritone-automate.run.cannot_pause").getString());
+		} else {
+			report(gateway().pause());
+		}
+	}
+
+	public void resumeCurrent() {
+		if (runs().snapshot().state() == RunState.PAUSED) {
+			report(runs().resume(), Component.translatable("screen.baritone-automate.run.continued").getString());
+		} else {
+			report(gateway().resume());
+		}
+	}
+
+	public void cancelCurrent() {
+		if (runs().snapshot().state().active()) {
+			runs().cancel();
+			report(true, Component.translatable("screen.baritone-automate.run.cancelled").getString());
+		} else {
+			report(gateway().cancel());
+		}
 	}
 
 	public Button addButton(Component label, int x, int y, int width, boolean requiresBaritone, Button.OnPress onPress) {
@@ -178,6 +216,11 @@ public final class ControlScreen extends Screen {
 
 	@Override
 	protected void init() {
+		var run = runs().snapshot();
+		builtRunState = run.state();
+		builtRunPhase = run.phase();
+		builtSkipDiamond = run.skipDiamond();
+		builtReady = ready();
 		wide = this.width >= 520;
 		int header = ready() ? 40 : 62;
 		contentY = header;
@@ -207,11 +250,11 @@ public final class ControlScreen extends Screen {
 		int y = this.height - 24;
 		int x = 8;
 		int w = 52;
-		addButton(Component.translatable("screen.baritone-automate.pause"), x, y, w, true, button -> report(gateway().pause()));
+		addButton(Component.translatable("screen.baritone-automate.pause"), x, y, w, true, button -> pauseCurrent());
 		x += w + 4;
-		addButton(Component.translatable("screen.baritone-automate.resume"), x, y, w, true, button -> report(gateway().resume()));
+		addButton(Component.translatable("screen.baritone-automate.resume"), x, y, w, true, button -> resumeCurrent());
 		x += w + 4;
-		addButton(Component.translatable("screen.baritone-automate.cancel"), x, y, w, true, button -> report(gateway().cancel()));
+		addButton(Component.translatable("screen.baritone-automate.cancel"), x, y, w, true, button -> cancelCurrent());
 		x += w + 4;
 		addButton(Component.translatable("screen.baritone-automate.force"), x, y, w, true, button -> confirmForceCancel());
 		addButton(Component.translatable("screen.baritone-automate.settings"), this.width - 78, y, 70, false,
@@ -219,6 +262,16 @@ public final class ControlScreen extends Screen {
 		if (!ready()) {
 			addButton(Component.translatable("screen.baritone-automate.missing.more"), this.width - 78, 36, 70, false,
 					button -> this.minecraft.setScreenAndShow(new BaritoneMissingScreen(this)));
+		}
+	}
+
+	@Override
+	public void tick() {
+		super.tick();
+		var run = runs().snapshot();
+		if (ready() != builtReady || (tab == Tab.RUN && (run.state() != builtRunState
+				|| run.phase() != builtRunPhase || run.skipDiamond() != builtSkipDiamond))) {
+			rebuild();
 		}
 	}
 

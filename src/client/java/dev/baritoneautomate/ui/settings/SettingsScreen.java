@@ -4,6 +4,7 @@ import dev.baritoneautomate.bootstrap.BaritoneAutomateClient;
 import dev.baritoneautomate.bridge.BaritoneGateway;
 import dev.baritoneautomate.bridge.GatewayStatus;
 import dev.baritoneautomate.bridge.SettingKind;
+import dev.baritoneautomate.bridge.SettingNumbers;
 import dev.baritoneautomate.bridge.SettingView;
 import dev.baritoneautomate.ui.common.ApplyBox;
 import java.util.ArrayList;
@@ -81,7 +82,9 @@ public final class SettingsScreen extends Screen {
 			query = text;
 			scroll = 0;
 			focusSearch = true;
+			int cursor = search.getCursorPosition();
 			rebuildWidgets();
+			search.moveCursorTo(Math.min(cursor, query.length()), false);
 		});
 		addRenderableWidget(search);
 		boolean grabSearch = focusSearch;
@@ -202,10 +205,10 @@ public final class SettingsScreen extends Screen {
 		suppress = false;
 		box.setTooltip(tip);
 		box.setResponder(text -> {
-			if (suppress || text.equals(view.value())) {
+			if (suppress || text.equals(find(view.name()).map(SettingView::value).orElse(""))) {
 				return;
 			}
-			if (!numeric(view.kind(), text)) {
+			if (!SettingNumbers.valid(view.kind(), text)) {
 				feedbackOk = false;
 				feedback = Component.translatable("screen.baritone-automate.settings.bad_value", view.name()).getString();
 				return;
@@ -423,33 +426,6 @@ public final class SettingsScreen extends Screen {
 
 	private static boolean isTrue(String value) {
 		return "true".equalsIgnoreCase(value);
-	}
-
-	private static boolean numeric(SettingKind kind, String text) {
-		try {
-			String trimmed = text.trim();
-			return switch (kind) {
-				case INTEGER -> {
-					Integer.parseInt(trimmed);
-					yield true;
-				}
-				case LONG -> {
-					Long.parseLong(trimmed);
-					yield true;
-				}
-				case FLOAT -> {
-					Float.parseFloat(trimmed);
-					yield true;
-				}
-				case DOUBLE -> {
-					Double.parseDouble(trimmed);
-					yield true;
-				}
-				default -> false;
-			};
-		} catch (NumberFormatException exception) {
-			return false;
-		}
 	}
 
 	@Override

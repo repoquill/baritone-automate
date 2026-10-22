@@ -9,6 +9,11 @@ import net.minecraft.core.BlockPos;
 
 public final class MinecraftClientView implements ClientView {
 	@Override
+	public void resetActions() {
+		ClientWorldActions.resetPortalPlan();
+	}
+
+	@Override
 	public boolean inGame() {
 		Minecraft client = Minecraft.getInstance();
 		return client.player != null && client.level != null;
@@ -68,6 +73,11 @@ public final class MinecraftClientView implements ClientView {
 	@Override
 	public ActionResult lightNetherPortal() {
 		return ClientWorldActions.lightNetherPortal();
+	}
+
+	@Override
+	public boolean portalBuildInProgress() {
+		return ClientWorldActions.portalBuildInProgress();
 	}
 
 	@Override
