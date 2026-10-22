@@ -39,4 +39,16 @@ public interface InventoryAccess {
 	ActionResult craft(String outputItemId, int count);
 
 	ActionResult smelt(String inputItemId, int count);
+
+	default boolean hasPendingAction() {
+		return false;
+	}
+
+	default ActionResult tickPendingAction() {
+		return ActionResult.ok("no pending inventory action");
+	}
+
+	/** Stop an owned station job and return its crafting ingredients to the inventory. */
+	default void cancelPendingAction() {
+	}
 }

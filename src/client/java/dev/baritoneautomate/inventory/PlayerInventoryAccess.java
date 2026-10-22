@@ -77,6 +77,21 @@ public final class PlayerInventoryAccess implements InventoryAccess {
 		return dev.baritoneautomate.bootstrap.ClientStation.smelt(inputItemId, count);
 	}
 
+	@Override
+	public boolean hasPendingAction() {
+		return StationDriver.hasPendingAction();
+	}
+
+	@Override
+	public ActionResult tickPendingAction() {
+		return dev.baritoneautomate.bootstrap.ClientStation.tickPendingAction();
+	}
+
+	@Override
+	public void cancelPendingAction() {
+		dev.baritoneautomate.bootstrap.ClientStation.cancelPendingAction();
+	}
+
 	private static int matching(ItemStack stack, Predicate<String> normalizedItemId) {
 		String id = itemId(stack);
 		if (id.isEmpty() || !normalizedItemId.test(id)) {

@@ -25,6 +25,7 @@ import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.EndPortalFrameBlock;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.Vec3;
@@ -32,6 +33,9 @@ import net.minecraft.world.phys.Vec3;
 /** Client scans and the one-block portal ignition step. Not used by unit tests. */
 public final class ClientWorldActions {
 	private static final int MAX_BLOCK_RADIUS = 16;
+	private static Level portalLevel;
+	private static BlockPos portalCorner;
+	private static Direction portalRight;
 
 	private ClientWorldActions() {
 	}
@@ -83,11 +87,12 @@ public final class ClientWorldActions {
 		if (player == null || minecraft.gameMode == null) {
 			return ActionResult.unavailable("no world");
 		}
-		if (!selectHotbar(player, itemId)) {
-			return ActionResult.missing("put " + itemId + " on the hotbar");
+		ActionResult selected = ensureSelected(player, "no " + itemId + " in the inventory", itemId);
+		if (selected.status() != ActionResult.Status.OK) {
+			return selected;
 		}
-		minecraft.gameMode.useItem(player, InteractionHand.MAIN_HAND);
-		return ActionResult.ok("used " + itemId);
+		InteractionResult used = minecraft.gameMode.useItem(player, InteractionHand.MAIN_HAND);
+		return used.consumesAction() ? ActionResult.ok("used " + itemId) : ActionResult.unavailable("could not use " + itemId);
 	}
 
 	public static ActionResult attackNearest(String entityId, double reach) {
@@ -96,7 +101,7 @@ public final class ClientWorldActions {
 		if (player == null || minecraft.gameMode == null) {
 			return ActionResult.unavailable("no world");
 		}
-		Entity entity = nearest(player, entityId, reach, Entity::isAlive);
+		Entity entity = nearest(player, entityId, Math.min(reach, player.entityInteractionRange()), Entity::isAlive);
 		if (entity == null) {
 			return ActionResult.missing("no " + entityId + " in reach");
 		}
@@ -134,7 +139,7 @@ public final class ClientWorldActions {
 		if (eye.status() != ActionResult.Status.OK) {
 			return eye;
 		}
-		Vec3 hit = Vec3.atCenterOf(frame);
+		Vec3 hit = Vec3.atCenterOf(frame).add(0.0, 0.5, 0.0);
 		InteractionResult used = minecraft.gameMode.useItemOn(
 				player,
 				InteractionHand.MAIN_HAND,
@@ -154,11 +159,17 @@ public final class ClientWorldActions {
 		if (findNearbyBlock("nether_portal", 8) != null) {
 			return ActionResult.ok("portal is already lit");
 		}
+		if (portalLevel != player.level() || portalCorner == null) {
+			portalLevel = player.level();
+			Direction facing = player.getDirection();
+			portalRight = facing.getClockWise();
+			portalCorner = player.blockPosition().relative(facing, 2).relative(portalRight, -1);
+		}
 		ActionResult igniter = ensureSelected(player, "no flint and steel or fire charge in the inventory", "flint_and_steel", "fire_charge");
 		if (igniter.status() != ActionResult.Status.OK) {
 			return igniter;
 		}
-		List<BlockPos> frame = frame(player);
+		List<BlockPos> frame = frame();
 		boolean frameMissing = false;
 		for (BlockPos cell : frame) {
 			BlockState state = player.level().getBlockState(cell);
@@ -190,10 +201,21 @@ public final class ClientWorldActions {
 		if (igniterAgain.status() != ActionResult.Status.OK) {
 			return igniterAgain;
 		}
-		BlockPos base = frameBase(player);
+		BlockPos base = portalCorner.relative(portalRight, 1);
 		Vec3 hit = Vec3.atCenterOf(base).add(0.0, 0.5, 0.0);
-		minecraft.gameMode.useItemOn(player, InteractionHand.MAIN_HAND, new BlockHitResult(hit, Direction.UP, base, false));
-		return ActionResult.ok("used the igniter");
+		InteractionResult used = minecraft.gameMode.useItemOn(player, InteractionHand.MAIN_HAND, new BlockHitResult(hit, Direction.UP, base, false));
+		return used.consumesAction() ? ActionResult.ok("used the igniter") : ActionResult.unavailable("could not ignite the portal frame");
+	}
+
+	public static boolean portalBuildInProgress() {
+		LocalPlayer player = player();
+		return player != null && portalLevel == player.level() && portalCorner != null;
+	}
+
+	public static void resetPortalPlan() {
+		portalLevel = null;
+		portalCorner = null;
+		portalRight = null;
 	}
 
 	private static boolean placeAgainstNeighbor(Minecraft minecraft, LocalPlayer player, BlockPos cell) {
@@ -218,38 +240,26 @@ public final class ClientWorldActions {
 				}
 			}
 			if (clicked == null) {
-				clicked = cell.below();
-				face = Direction.UP;
+				return false;
 			}
 		}
 		Vec3 hit = Vec3.atCenterOf(clicked).add(face.getStepX() * 0.5, face.getStepY() * 0.5, face.getStepZ() * 0.5);
-		minecraft.gameMode.useItemOn(player, InteractionHand.MAIN_HAND, new BlockHitResult(hit, face, clicked, false));
-		return true;
+		return minecraft.gameMode.useItemOn(player, InteractionHand.MAIN_HAND, new BlockHitResult(hit, face, clicked, false)).consumesAction();
 	}
 
-	/** Vanilla minimum frame: 4 by 5 with the four corners omitted, ten obsidian. */
-	private static List<BlockPos> frame(LocalPlayer player) {
-		Direction facing = player.getDirection();
-		Direction right = facing.getClockWise();
-		BlockPos corner = player.blockPosition().relative(facing, 2);
+	/** A complete 4 by 5 perimeter provides support for every subsequent block. */
+	private static List<BlockPos> frame() {
 		List<BlockPos> cells = new ArrayList<>();
 		for (int dy = 0; dy <= 4; dy++) {
 			for (int dx = 0; dx <= 3; dx++) {
-				boolean isCorner = (dx == 0 || dx == 3) && (dy == 0 || dy == 4);
 				boolean interior = dx != 0 && dx != 3 && dy != 0 && dy != 4;
-				if (isCorner || interior) {
+				if (interior) {
 					continue;
 				}
-				cells.add(corner.relative(right, dx).above(dy));
+				cells.add(portalCorner.relative(portalRight, dx).above(dy));
 			}
 		}
 		return cells;
-	}
-
-	private static BlockPos frameBase(LocalPlayer player) {
-		Direction facing = player.getDirection();
-		Direction right = facing.getClockWise();
-		return player.blockPosition().relative(facing, 2).relative(right, 1);
 	}
 
 	private static Entity nearest(LocalPlayer player, String entityId, double radius, Predicate<Entity> filter) {
@@ -258,7 +268,7 @@ public final class ClientWorldActions {
 		}
 		AABB area = player.getBoundingBox().inflate(radius);
 		Entity closest = null;
-		double best = Double.MAX_VALUE;
+		double best = radius * radius;
 		for (Entity entity : player.level().getEntities(player, area, entity -> filter.test(entity) && matchesEntity(entity, entityId))) {
 			double distance = player.distanceToSqr(entity);
 			if (distance < best) {

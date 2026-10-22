@@ -14,10 +14,13 @@ public final class GoalPanel implements ControlPanel {
 		screen.addBox(x, y, 52, screen.goalX, Component.translatable("screen.baritone-automate.axis.x"), text -> screen.goalX = text);
 		screen.addBox(x + 56, y, 52, screen.goalY, Component.translatable("screen.baritone-automate.axis.y"), text -> screen.goalY = text);
 		screen.addBox(x + 112, y, 52, screen.goalZ, Component.translatable("screen.baritone-automate.axis.z"), text -> screen.goalZ = text);
-		screen.addButton(Component.translatable("screen.baritone-automate.goal.feet"), x + 170, y, 72, false, button -> fillFeet(screen));
-		screen.addButton(Component.translatable("screen.baritone-automate.goal.crosshair"), x + 246, y, 88, false, button -> fillCrosshair(screen));
+		boolean wide = screen.contentWidth() >= 334;
+		int shortcutsX = wide ? x + 170 : x;
+		int shortcutsY = wide ? y : y + 24;
+		screen.addButton(Component.translatable("screen.baritone-automate.goal.feet"), shortcutsX, shortcutsY, 72, false, button -> fillFeet(screen));
+		screen.addButton(Component.translatable("screen.baritone-automate.goal.crosshair"), shortcutsX + 76, shortcutsY, 88, false, button -> fillCrosshair(screen));
 
-		int y2 = y + 24;
+		int y2 = shortcutsY + 24;
 		screen.addButton(Component.translatable("screen.baritone-automate.goal.set"), x, y2, 110, true, button -> {
 			int[] pos = parse(screen);
 			if (pos == null) {
@@ -54,7 +57,7 @@ public final class GoalPanel implements ControlPanel {
 
 	@Override
 	public void paint(GuiGraphicsExtractor graphics, ControlScreen screen) {
-		int y = screen.contentY() + 76;
+		int y = screen.contentY() + (screen.contentWidth() >= 334 ? 76 : 100);
 		if (y < screen.contentY() + screen.contentHeight()) {
 			graphics.text(screen.font(), Component.translatable("screen.baritone-automate.goal.hint"), screen.contentX(), y, 0xFF9A9A9A, false);
 		}

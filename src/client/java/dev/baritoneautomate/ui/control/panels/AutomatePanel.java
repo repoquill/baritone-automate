@@ -61,7 +61,8 @@ public final class AutomatePanel implements ControlPanel {
 			screen.runs().setSkipDiamond(!snap.skipDiamond());
 			screen.rebuild();
 		});
-		screen.addButton(Component.translatable("screen.baritone-automate.run.reset"), x + 252, y2, 72, false, button -> {
+		boolean wide = screen.contentWidth() >= 324;
+		screen.addButton(Component.translatable("screen.baritone-automate.run.reset"), wide ? x + 252 : x, wide ? y2 : y2 + 24, 72, false, button -> {
 			screen.runs().reset();
 			screen.report(true, Component.translatable("screen.baritone-automate.run.reset_done").getString());
 			screen.rebuild();
@@ -73,7 +74,7 @@ public final class AutomatePanel implements ControlPanel {
 		RunSnapshot snap = screen.runs().snapshot();
 		RunPhase[] phases = RunPhase.values();
 		int x = screen.contentX();
-		int y = screen.contentY() + 52;
+		int y = screen.contentY() + (screen.contentWidth() >= 324 ? 52 : 76);
 		int bottom = screen.contentY() + screen.contentHeight();
 		if (y >= bottom) {
 			return;

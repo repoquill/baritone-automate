@@ -10,15 +10,18 @@ import dev.baritoneautomate.bridge.ProcessSnapshot;
 /** Avoid restarting the same Baritone request on every tick. */
 final class PathRequests {
 	private String key = "";
+	private BlockPosView target;
+	private long requestedAt;
 
 	void gotoBlock(PhaseContext context, String key, BlockPosView pos) {
 		if (pos == null) {
 			return;
 		}
-		if (sameRunning(context, key, ProcessKind.GOTO)) {
+		if (sameRunning(context, key, ProcessKind.GOTO) && pos.equals(target)) {
 			return;
 		}
 		this.key = key;
+		target = pos;
 		context.gateway().gotoBlock(pos.x(), pos.y(), pos.z());
 	}
 
@@ -26,10 +29,13 @@ final class PathRequests {
 		if (pos == null) {
 			return;
 		}
-		if (sameRunning(context, key, ProcessKind.CUSTOM_GOAL)) {
+		if (sameRunning(context, key, ProcessKind.CUSTOM_GOAL)
+				&& (pos.equals(target) || context.nowMillis() - requestedAt < 500L)) {
 			return;
 		}
 		this.key = key;
+		target = pos;
+		requestedAt = context.nowMillis();
 		context.gateway().customGoal(CustomGoalRequest.near(pos.x(), pos.y(), pos.z(), 2));
 	}
 

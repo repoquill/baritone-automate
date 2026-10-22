@@ -32,6 +32,10 @@ public interface ClientView {
 	 */
 	ActionResult lightNetherPortal();
 
+	default boolean portalBuildInProgress() {
+		return false;
+	}
+
 	/** End portal frames in range whose {@code eye} property is still false. */
 	int emptyEndFrames(int radius);
 
@@ -43,4 +47,8 @@ public interface ClientView {
 	 * OK means the use was accepted, not that every frame is filled.
 	 */
 	ActionResult fillEndPortalFrame();
+
+	/** Forget construction plans when a run is cancelled or restarted. */
+	default void resetActions() {
+	}
 }

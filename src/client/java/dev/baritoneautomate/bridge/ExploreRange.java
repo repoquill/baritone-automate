@@ -33,11 +33,14 @@ public final class ExploreRange {
 		if (rangeBlocks <= 0) {
 			return List.of();
 		}
+		if (rangeBlocks > MAX_BLOCKS) {
+			throw new IllegalArgumentException("explore range is too large");
+		}
 		long radiusSquared = (long) rangeBlocks * rangeBlocks;
-		int minChunkX = Math.floorDiv(centerX - rangeBlocks, 16);
-		int maxChunkX = Math.floorDiv(centerX + rangeBlocks, 16);
-		int minChunkZ = Math.floorDiv(centerZ - rangeBlocks, 16);
-		int maxChunkZ = Math.floorDiv(centerZ + rangeBlocks, 16);
+		int minChunkX = (int) Math.floorDiv((long) centerX - rangeBlocks, 16);
+		int maxChunkX = (int) Math.floorDiv((long) centerX + rangeBlocks, 16);
+		int minChunkZ = (int) Math.floorDiv((long) centerZ - rangeBlocks, 16);
+		int maxChunkZ = (int) Math.floorDiv((long) centerZ + rangeBlocks, 16);
 		List<int[]> included = new ArrayList<>();
 		for (int chunkX = minChunkX; chunkX <= maxChunkX; chunkX++) {
 			for (int chunkZ = minChunkZ; chunkZ <= maxChunkZ; chunkZ++) {
@@ -57,14 +60,17 @@ public final class ExploreRange {
 	}
 
 	private static boolean overlaps(int x, int z, long radiusSquared, int chunkX, int chunkZ) {
-		int minX = chunkX << 4;
-		int maxX = minX + 15;
-		int minZ = chunkZ << 4;
-		int maxZ = minZ + 15;
-		int nearestX = Math.min(Math.max(x, minX), maxX);
-		int nearestZ = Math.min(Math.max(z, minZ), maxZ);
-		long dx = (long) x - nearestX;
-		long dz = (long) z - nearestZ;
+		long minX = (long) chunkX * 16;
+		long maxX = minX + 15;
+		long minZ = (long) chunkZ * 16;
+		long maxZ = minZ + 15;
+		long nearestX = Math.min(Math.max(x, minX), maxX);
+		long nearestZ = Math.min(Math.max(z, minZ), maxZ);
+		long dx = x - nearestX;
+		long dz = z - nearestZ;
+		if (Math.abs(dx) > Integer.MAX_VALUE || Math.abs(dz) > Integer.MAX_VALUE) {
+			return false;
+		}
 		return dx * dx + dz * dz <= radiusSquared;
 	}
 }

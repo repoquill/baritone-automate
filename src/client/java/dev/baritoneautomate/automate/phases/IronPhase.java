@@ -13,6 +13,7 @@ import java.util.List;
  */
 final class IronPhase implements PhaseHandler {
 	private static final long TIMEOUT = 8 * 60_000L;
+	private static final List<String> COBBLE_BLOCKS = List.of("stone", "deepslate", "cobblestone", "cobbled_deepslate");
 	private final MineLoop iron = new MineLoop(3);
 	private final MineLoop cobble = new MineLoop(3);
 	private final MineLoop wood = new MineLoop(3);
@@ -34,7 +35,7 @@ final class IronPhase implements PhaseHandler {
 				&& context.inventory().count("cobblestone") < 3
 				&& context.inventory().count("cobbled_deepslate") < 3
 				&& Supply.hasPick(context.inventory(), "wooden")) {
-			cobble.start(context, 3, List.of("cobblestone", "cobbled_deepslate"));
+			cobble.start(context, 3, COBBLE_BLOCKS);
 			return;
 		}
 		if (Supply.hasPick(context.inventory(), "stone")
@@ -60,13 +61,13 @@ final class IronPhase implements PhaseHandler {
 		if (!Supply.hasPick(context.inventory(), "stone")) {
 			int loose = context.inventory().count("cobblestone") + context.inventory().count("cobbled_deepslate");
 			if (loose < 3) {
-				return cobble.afterShortfall(context, 3, List.of("cobblestone", "cobbled_deepslate"), "mining cobblestone");
+				return cobble.afterShortfall(context, 3, COBBLE_BLOCKS, "mining cobblestone");
 			}
 			return Supply.craft(context, "stone_pickaxe");
 		}
 		int ingots = context.inventory().count("iron_ingot");
 		if (ingots < 3) {
-			if (context.inventory().count("raw_iron") <= 0) {
+			if (context.inventory().count("raw_iron") + ingots < 3) {
 				return iron.afterShortfall(context, 3, List.of("iron_ore", "deepslate_iron_ore"), "mining iron");
 			}
 			return Supply.smelt(context, "raw_iron", 3 - ingots);

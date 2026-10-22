@@ -263,6 +263,161 @@ class RunControllerTest {
 	}
 
 	@Test
+	void pausedTimeDoesNotIncreaseElapsedTimeOrResetTheTimeoutBudget() {
+		Harness harness = Harness.create();
+		harness.runs.start();
+		harness.clock.now = 15_000L;
+		assertTrue(harness.runs.pause());
+		harness.clock.now = 115_000L;
+		assertEquals(15_000L, harness.runs.snapshot().phaseElapsedMillis());
+		assertTrue(harness.runs.resume());
+		assertEquals(15_000L, harness.runs.snapshot().phaseElapsedMillis());
+		harness.clock.now = 121_000L;
+		harness.runs.tick();
+		assertEquals(1, harness.runs.snapshot().attempt());
+	}
+
+	@Test
+	void deathDuringAnActivePhaseStopsTheRun() {
+		Harness harness = reach(RunPhase.IRON);
+		harness.world.alive = false;
+		harness.runs.tick();
+		assertEquals(RunState.FAILED, harness.runs.snapshot().state());
+		assertTrue(harness.runs.snapshot().failureReason().contains("alive"));
+	}
+
+	@Test
+	void craftingTheWoodenPickStartsTheFirstCobblestoneRequest() {
+		Harness harness = reachIronWithFourLogs();
+		harness.runs.tick();
+		assertTrue(harness.inventory.count("wooden_pickaxe") > 0);
+		int mines = harness.gateway.mines;
+		harness.runs.tick();
+		assertTrue(harness.gateway.mines > mines);
+		assertTrue(harness.gateway.mined.getLast().contains("stone"));
+	}
+
+	@Test
+	void portalKeepsBuildingAfterTheFirstObsidianIsPlaced() {
+		Harness harness = reach(RunPhase.NETHER_PORTAL);
+		harness.inventory.set("obsidian", 14);
+		harness.runs.tick();
+		assertEquals(1, harness.world.lights);
+		harness.inventory.set("obsidian", 13);
+		int mines = harness.gateway.mines;
+		harness.runs.tick();
+		assertEquals(2, harness.world.lights);
+		assertEquals(mines, harness.gateway.mines);
+		assertEquals(RunState.RUNNING, harness.runs.snapshot().state());
+	}
+
+	@Test
+	void portalRetryContinuesTheExistingConstructionPlan() {
+		Harness harness = reach(RunPhase.NETHER_PORTAL);
+		harness.inventory.set("obsidian", 14);
+		harness.runs.tick();
+		harness.inventory.set("obsidian", 13);
+		harness.clock.now += 10 * 60_000L + 1;
+		harness.runs.tick();
+		assertEquals(1, harness.runs.snapshot().attempt());
+		int mines = harness.gateway.mines;
+		harness.runs.tick();
+		assertEquals(2, harness.world.lights);
+		assertEquals(mines, harness.gateway.mines);
+	}
+
+	@Test
+	void endPortalStillRequestsAPathWhenItIsTwoBlocksAway() {
+		Harness harness = reach(RunPhase.ENTER_END);
+		harness.world.nearbyBlockId = "end_portal";
+		harness.world.nearbyBlock = new BlockPosView(102, 64, 100);
+		harness.runs.tick();
+		assertEquals(ProcessKind.GOTO, harness.gateway.currentProcess().kind());
+	}
+
+	@Test
+	void pendingCraftIsCompletedBeforeCheckingForMissingMaterials() {
+		Harness harness = reach(RunPhase.IRON);
+		harness.inventory.pendingTicks = 2;
+		harness.inventory.pendingOutput = "wooden_pickaxe";
+		int mines = harness.gateway.mines;
+		harness.runs.tick();
+		assertEquals(mines, harness.gateway.mines);
+		harness.runs.tick();
+		assertTrue(harness.inventory.count("wooden_pickaxe") > 0);
+		assertTrue(harness.gateway.mines > mines);
+	}
+
+	@Test
+	void cancelClearsPendingInventoryWork() {
+		Harness harness = reach(RunPhase.IRON);
+		harness.inventory.pendingTicks = 2;
+		harness.runs.cancel();
+		assertFalse(harness.inventory.hasPendingAction());
+	}
+
+	@Test
+	void inventoryExceptionsFailTheRunAndStopItsWork() {
+		Harness harness = reachIronWithFourLogs();
+		harness.inventory.throwOnCraft = true;
+		harness.runs.tick();
+		assertEquals(RunState.FAILED, harness.runs.snapshot().state());
+		assertTrue(harness.runs.snapshot().failureReason().contains("craft refused"));
+	}
+
+	@Test
+	void strongholdReturnsFromTheNetherBeforeThrowingEyes() {
+		Harness harness = reach(RunPhase.STRONGHOLD);
+		harness.world.dimension = "minecraft:the_nether";
+		harness.world.nearbyBlockId = "nether_portal";
+		harness.world.nearbyBlock = harness.world.pos;
+		harness.inventory.set("ender_eye", 1);
+		harness.runs.tick();
+		assertEquals(0, harness.world.uses);
+		assertEquals(ProcessKind.GOTO, harness.gateway.currentProcess().kind());
+	}
+
+	@Test
+	void pendingItemUseDoesNotConsumeTheEyeThrowBudget() {
+		Harness harness = reach(RunPhase.STRONGHOLD);
+		harness.inventory.set("ender_eye", 1);
+		harness.world.used = ActionResult.pending("moving an eye to the hotbar");
+		for (int i = 0; i < 12; i++) {
+			harness.clock.now += 5_000L;
+			harness.runs.tick();
+			assertEquals(RunState.RUNNING, harness.runs.snapshot().state());
+		}
+	}
+
+	@Test
+	void theLastThrownEyeIsObservedBeforeTheThrowLimitFails() {
+		Harness harness = reach(RunPhase.STRONGHOLD);
+		harness.inventory.set("ender_eye", 8);
+		for (int i = 0; i < 8; i++) {
+			harness.clock.now += 5_000L;
+			harness.runs.tick();
+		}
+		assertEquals(RunState.RUNNING, harness.runs.snapshot().state());
+		harness.world.nearbyBlockId = "end_portal_frame";
+		harness.world.nearbyBlock = harness.world.pos;
+		harness.runs.tick();
+		assertEquals(RunPhase.ENTER_END, harness.runs.snapshot().phase());
+	}
+
+	@Test
+	void movingHuntTargetUpdatesTheApproachGoal() {
+		Harness harness = reach(RunPhase.BLAZE_PEARL);
+		harness.world.dimension = "minecraft:the_nether";
+		harness.world.nearbyEntityId = "minecraft:blaze";
+		harness.world.nearbyEntity = new BlockPosView(120, 64, 100);
+		harness.runs.tick();
+		harness.world.nearbyEntity = new BlockPosView(130, 64, 100);
+		harness.clock.now += 1_000L;
+		harness.runs.tick();
+		assertEquals(130, harness.gateway.lastCustomGoal.x());
+	}
+
+	@Test
 	void continueAfterFailureReentersThePhase() {
 		Harness harness = Harness.create();
 		harness.gateway.present = false;
@@ -324,7 +479,7 @@ class RunControllerTest {
 	@Test
 	void portalDoesNotAdvanceWhenTheObsidianMineFinishesShort() {
 		Harness harness = reach(RunPhase.NETHER_PORTAL);
-		harness.inventory.set("iron_pickaxe", 1);
+		harness.inventory.set("diamond_pickaxe", 1);
 		harness.runs.tick();
 		assertTrue(harness.gateway.mines >= 1);
 		int mines = harness.gateway.mines;
@@ -341,19 +496,19 @@ class RunControllerTest {
 		int mines = harness.gateway.mines;
 		harness.runs.tick();
 		assertEquals(RunState.FAILED, harness.runs.snapshot().state());
-		assertTrue(harness.runs.snapshot().failureReason().contains("need iron/diamond pickaxe before mining obsidian"));
+		assertTrue(harness.runs.snapshot().failureReason().contains("need diamond/netherite pickaxe before mining obsidian"));
 		assertEquals(mines, harness.gateway.mines);
 		assertEquals(0, harness.world.lights);
 	}
 
 	@Test
-	void skipDiamondCraftsAnIronPickBeforeMiningObsidian() {
+	void skipDiamondCraftsADiamondPickBeforeMiningObsidian() {
 		Harness harness = reach(RunPhase.NETHER_PORTAL);
-		harness.inventory.set("iron_ingot", 3);
+		harness.inventory.set("diamond", 3);
 		harness.inventory.set("stick", 2);
 		int mines = harness.gateway.mines;
 		harness.runs.tick();
-		assertTrue(harness.inventory.count("iron_pickaxe") >= 1);
+		assertTrue(harness.inventory.count("diamond_pickaxe") >= 1);
 		assertTrue(harness.gateway.mines > mines);
 		assertEquals(RunPhase.NETHER_PORTAL, harness.runs.snapshot().phase());
 		assertEquals(RunState.RUNNING, harness.runs.snapshot().state());
@@ -372,19 +527,17 @@ class RunControllerTest {
 	}
 
 	@Test
-	void skipDiamondSmeltsRawIronBeforeThePick() {
+	void ironPickCannotBeUsedToCollectObsidian() {
 		Harness harness = reach(RunPhase.NETHER_PORTAL);
+		harness.inventory.set("iron_pickaxe", 1);
 		harness.inventory.set("raw_iron", 3);
 		harness.inventory.set("coal", 1);
 		harness.inventory.set("stick", 2);
 		int mines = harness.gateway.mines;
 		harness.runs.tick();
-		assertEquals(3, harness.inventory.count("iron_ingot"));
+		assertEquals(RunState.FAILED, harness.runs.snapshot().state());
 		assertEquals(mines, harness.gateway.mines);
-		assertEquals(RunPhase.NETHER_PORTAL, harness.runs.snapshot().phase());
-		harness.runs.tick();
-		assertTrue(harness.inventory.count("iron_pickaxe") >= 1);
-		assertTrue(harness.gateway.mines > mines);
+		assertTrue(harness.runs.snapshot().failureReason().contains("diamond/netherite"));
 	}
 
 	@Test
@@ -402,7 +555,7 @@ class RunControllerTest {
 		harness.runs.start();
 		harness.runs.tick();
 		assertTrue(harness.runs.skipPhase());
-		harness.inventory.set("obsidian", 10);
+		harness.inventory.set("obsidian", 14);
 		assertTrue(harness.runs.skipPhase());
 		assertEquals(RunPhase.NETHER_PORTAL, harness.runs.snapshot().phase());
 		harness.runs.tick();
@@ -554,6 +707,33 @@ class RunControllerTest {
 	}
 
 	@Test
+	void enterEndCraftsReplacementEyesBeforeFillingFrames() {
+		Harness harness = reach(RunPhase.ENTER_END);
+		harness.world.emptyFrames = 1;
+		harness.inventory.set("ender_pearl", 1);
+		harness.inventory.set("blaze_rod", 1);
+		harness.runs.tick();
+		assertEquals(RunState.RUNNING, harness.runs.snapshot().state());
+		assertEquals(1, harness.inventory.count("ender_eye"));
+		harness.runs.tick();
+		assertEquals(1, harness.world.fills);
+		assertEquals(0, harness.inventory.count("ender_eye"));
+	}
+
+	@Test
+	void strippedWoodAndNewWoodTypesCanLeaveTheWoodPhase() {
+		for (String item : List.of("stripped_birch_wood", "pale_oak_log", "poplar_log")) {
+			Harness harness = Harness.create();
+			harness.inventory.set(item, 4);
+			harness.runs.start();
+			harness.runs.tick();
+			harness.runs.tick();
+			assertEquals(RunPhase.IRON, harness.runs.snapshot().phase(), item);
+			assertEquals(0, harness.gateway.mines, item);
+		}
+	}
+
+	@Test
 	void enterEndFailsWhenTheFrameRejectsTheEye() {
 		Harness harness = reach(RunPhase.ENTER_END);
 		harness.world.emptyFrames = 1;
@@ -693,6 +873,17 @@ class RunControllerTest {
 		ActionResult attacked = ActionResult.ok("attacked");
 		ActionResult fill = ActionResult.ok("placing an eye of ender");
 		FakeInventory stock;
+		boolean portalPlan;
+
+		@Override
+		public void resetActions() {
+			portalPlan = false;
+		}
+
+		@Override
+		public boolean portalBuildInProgress() {
+			return portalPlan;
+		}
 
 		@Override
 		public boolean inGame() {
@@ -750,6 +941,7 @@ class RunControllerTest {
 		@Override
 		public ActionResult lightNetherPortal() {
 			lights++;
+			portalPlan = true;
 			return light;
 		}
 
@@ -791,6 +983,28 @@ class RunControllerTest {
 	private static final class FakeInventory implements InventoryAccess {
 		private final Map<String, Integer> counts = new HashMap<>();
 		ActionResult craftResult;
+		int pendingTicks;
+		String pendingOutput;
+		boolean throwOnCraft;
+
+		@Override
+		public boolean hasPendingAction() {
+			return pendingTicks > 0;
+		}
+
+		@Override
+		public ActionResult tickPendingAction() {
+			if (--pendingTicks > 0) {
+				return ActionResult.pending("crafting " + pendingOutput);
+			}
+			set(pendingOutput, count(pendingOutput) + 1);
+			return ActionResult.ok("crafted " + pendingOutput);
+		}
+
+		@Override
+		public void cancelPendingAction() {
+			pendingTicks = 0;
+		}
 
 		void set(String id, int count) {
 			counts.put(ItemIds.normalize(id), count);
@@ -829,6 +1043,9 @@ class RunControllerTest {
 
 		@Override
 		public ActionResult craft(String outputItemId, int count) {
+			if (throwOnCraft) {
+				throw new IllegalStateException("craft refused");
+			}
 			if (craftResult != null) {
 				return craftResult;
 			}
@@ -893,6 +1110,7 @@ class RunControllerTest {
 		long generation;
 		ProcessSnapshot process = ProcessSnapshot.idle();
 		final List<String> calls = new ArrayList<>();
+		CustomGoalRequest lastCustomGoal;
 
 		void completeProcess() {
 			process = new ProcessSnapshot(process.kind(), ProcessOutcome.SUCCEEDED, "done", process.startedAtMillis(), process.generation());
@@ -936,6 +1154,7 @@ class RunControllerTest {
 
 		@Override
 		public GatewayStatus customGoal(CustomGoalRequest request) {
+			lastCustomGoal = request;
 			return start(ProcessKind.CUSTOM_GOAL, "goal");
 		}
 

@@ -61,9 +61,9 @@ final class EnterEndPhase implements PhaseHandler {
 	}
 
 	private PhaseTick standInPortal(PhaseContext context, BlockPosView portal) {
-		if (!PhaseSupport.close(context, portal, 2.5)) {
+		paths.gotoBlock(context, "end-portal", portal);
+		if (!PhaseSupport.close(context, portal, 1.0)) {
 			stood = 0;
-			paths.gotoBlock(context, "end-portal", portal);
 			return PhaseTick.cont("pathing into the end portal");
 		}
 		stood++;
@@ -75,7 +75,11 @@ final class EnterEndPhase implements PhaseHandler {
 
 	private PhaseTick fillFrame(PhaseContext context, BlockPosView frame) {
 		if (context.inventory().count("ender_eye") <= 0) {
-			return PhaseTick.fail("not enough ender eyes to fill the portal frames");
+			ActionResult crafted = context.inventory().craft("ender_eye", 1);
+			if (crafted.status() == ActionResult.Status.PENDING || context.inventory().count("ender_eye") > 0) {
+				return PhaseTick.cont(crafted.message());
+			}
+			return PhaseTick.fail("not enough ender eyes to fill the portal frames; " + crafted.message());
 		}
 		if (frame == null || !PhaseSupport.close(context, frame, FRAME_REACH)) {
 			if (frame != null) {

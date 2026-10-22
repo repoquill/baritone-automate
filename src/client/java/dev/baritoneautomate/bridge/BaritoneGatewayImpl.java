@@ -161,7 +161,7 @@ final class BaritoneGatewayImpl implements BaritoneGateway {
 
 	@Override
 	public GatewayStatus thisway(double distance) {
-		if (distance <= 0.0) {
+		if (!Double.isFinite(distance) || distance <= 0.0) {
 			return GatewayStatus.fail("distance must be positive");
 		}
 		return call(baritone -> {
@@ -183,6 +183,7 @@ final class BaritoneGatewayImpl implements BaritoneGateway {
 		}
 		int count = Math.max(quantity, 1);
 		return call(baritone -> {
+			prepareProcess(baritone);
 			baritone.getMineProcess().mineByName(count, names);
 			begin(ProcessKind.MINE, "mine " + String.join(",", names), null);
 			return GatewayStatus.ok("mining");
@@ -212,6 +213,7 @@ final class BaritoneGatewayImpl implements BaritoneGateway {
 		return call(baritone -> {
 			try {
 				Path filter = writeExploreFilter(x, z, rangeBlocks);
+				prepareProcess(baritone);
 				baritone.getExploreProcess().explore(x, z);
 				baritone.getExploreProcess().applyJsonFilter(filter, rangeBlocks > 0);
 			} catch (Throwable failure) {
@@ -233,6 +235,7 @@ final class BaritoneGatewayImpl implements BaritoneGateway {
 				return GatewayStatus.fail("player not loaded");
 			}
 			String wanted = name == null ? "" : name.trim();
+			prepareProcess(baritone);
 			baritone.getFollowProcess().follow(entity -> matchesPlayer(entity, self, wanted));
 			begin(ProcessKind.FOLLOW, wanted.isEmpty() ? "follow player" : "follow " + wanted, null);
 			return GatewayStatus.ok("following");
@@ -251,6 +254,7 @@ final class BaritoneGatewayImpl implements BaritoneGateway {
 			return GatewayStatus.fail("unknown entity type " + entityTypeId);
 		}
 		return call(baritone -> {
+			prepareProcess(baritone);
 			baritone.getFollowProcess().follow(entity -> entity.getType() == type);
 			begin(ProcessKind.FOLLOW, "follow " + entityTypeId, null);
 			return GatewayStatus.ok("following");
@@ -261,6 +265,7 @@ final class BaritoneGatewayImpl implements BaritoneGateway {
 	public GatewayStatus farm(int range) {
 		int size = Math.max(range, 1);
 		return call(baritone -> {
+			prepareProcess(baritone);
 			baritone.getFarmProcess().farm(size);
 			begin(ProcessKind.FARM, "farm " + size, null);
 			return GatewayStatus.ok("farming");
@@ -275,6 +280,9 @@ final class BaritoneGatewayImpl implements BaritoneGateway {
 		String line = commandLine.trim();
 		if (line.startsWith("#")) {
 			line = line.substring(1).trim();
+		}
+		if (line.isEmpty()) {
+			return GatewayStatus.fail("empty command");
 		}
 		String command = line;
 		return call(baritone -> {
@@ -410,7 +418,14 @@ final class BaritoneGatewayImpl implements BaritoneGateway {
 			if (setting == null) {
 				return GatewayStatus.fail("unknown setting");
 			}
+			SettingKind settingKind = SettingKind.of(setting.getValueClass());
+			if ((settingKind == SettingKind.INTEGER || settingKind == SettingKind.LONG
+					|| settingKind == SettingKind.FLOAT || settingKind == SettingKind.DOUBLE)
+					&& !SettingNumbers.valid(settingKind, serializedValue)) {
+				return GatewayStatus.fail("invalid numeric setting value");
+			}
 			SettingsUtil.parseAndApply(BaritoneAPI.getSettings(), setting.getName(), serializedValue);
+			SettingsUtil.save(BaritoneAPI.getSettings());
 			return GatewayStatus.ok("setting updated");
 		});
 	}
@@ -423,6 +438,7 @@ final class BaritoneGatewayImpl implements BaritoneGateway {
 				return GatewayStatus.fail("unknown setting");
 			}
 			setting.reset();
+			SettingsUtil.save(BaritoneAPI.getSettings());
 			return GatewayStatus.ok("setting reset");
 		});
 	}
@@ -435,6 +451,7 @@ final class BaritoneGatewayImpl implements BaritoneGateway {
 				setting.reset();
 				count++;
 			}
+			SettingsUtil.save(BaritoneAPI.getSettings());
 			return GatewayStatus.ok("reset " + count + " settings");
 		});
 	}
@@ -470,8 +487,16 @@ final class BaritoneGatewayImpl implements BaritoneGateway {
 	}
 
 	private void startGoal(IBaritone baritone, ProcessKind processKind, Goal goal, String text) {
+		prepareProcess(baritone);
 		baritone.getCustomGoalProcess().setGoalAndPath(goal);
 		begin(processKind, text, goal);
+	}
+
+	private void prepareProcess(IBaritone baritone) {
+		pauseRequested = false;
+		noteCancelled();
+		releaseProcesses(baritone);
+		baritone.getPathingBehavior().cancelEverything();
 	}
 
 	private void begin(ProcessKind processKind, String text, Goal goal) {
@@ -678,7 +703,8 @@ final class BaritoneGatewayImpl implements BaritoneGateway {
 	private static Path writeExploreFilter(int x, int z, int rangeBlocks) throws IOException {
 		Path dir = Path.of(System.getProperty("java.io.tmpdir"), "baritone-automate");
 		Files.createDirectories(dir);
-		Path file = dir.resolve("explore-filter.json");
+		Path file = Files.createTempFile(dir, "explore-filter-", ".json");
+		file.toFile().deleteOnExit();
 		String json = rangeBlocks > 0 ? ExploreRange.json(x, z, rangeBlocks) : "[]";
 		Files.writeString(file, json);
 		return file;

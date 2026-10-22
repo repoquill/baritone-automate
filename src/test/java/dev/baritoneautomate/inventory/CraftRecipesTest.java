@@ -81,4 +81,42 @@ class CraftRecipesTest {
 		assertTrue(missingFuel.message().contains("fuel"));
 		assertEquals(1, noFuel.get("minecraft:raw_iron"));
 	}
+
+	@Test
+	void birchLogsProduceBirchPlanksThroughoutTheCraftingChain() {
+		Map<String, Integer> counts = new HashMap<>();
+		counts.put("minecraft:birch_log", 4);
+		assertEquals(ActionResult.Status.OK, CraftRecipes.craft(counts, "wooden_pickaxe", 1, false).status());
+		assertEquals(1, counts.get("minecraft:wooden_pickaxe"));
+		assertEquals(0, counts.getOrDefault("minecraft:oak_planks", 0));
+		assertTrue(counts.getOrDefault("minecraft:birch_planks", 0) > 0);
+	}
+
+	@Test
+	void inventoryTableIsReusedWithoutCraftingAnotherOne() {
+		Map<String, Integer> counts = new HashMap<>(Map.of("crafting_table", 1, "oak_planks", 3, "stick", 2));
+		assertEquals(ActionResult.Status.OK, CraftRecipes.craft(counts, "wooden_pickaxe", 1, false).status());
+		assertEquals(1, counts.get("minecraft:crafting_table"));
+	}
+
+	@Test
+	void twoPlanksCanSmeltThreeItems() {
+		Map<String, Integer> counts = new HashMap<>(Map.of("raw_iron", 3, "oak_planks", 2));
+		assertEquals(ActionResult.Status.OK, CraftRecipes.smelt(counts, "raw_iron", 3, true, true).status());
+		assertEquals(3, counts.get("minecraft:iron_ingot"));
+		assertEquals(0, counts.get("minecraft:oak_planks"));
+	}
+
+	@Test
+	void netherWoodCannotBeUsedAsFurnaceFuel() {
+		Map<String, Integer> counts = new HashMap<>(Map.of("raw_iron", 1, "warped_stem", 1, "crimson_planks", 2));
+		assertEquals(ActionResult.Status.MISSING, CraftRecipes.smelt(counts, "raw_iron", 1, true, true).status());
+		assertEquals(1, counts.get("raw_iron"));
+	}
+
+	@Test
+	void vanillaRecipesDoNotConsumeItemsWithAnotherNamespace() {
+		assertEquals(0, CraftRecipes.countToken(Map.of("example:iron_ingot", 3), "iron_ingot"));
+		assertEquals(3, CraftRecipes.countToken(Map.of("example:iron_ingot", 3), "example:iron_ingot"));
+	}
 }

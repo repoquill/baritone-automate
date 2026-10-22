@@ -38,10 +38,10 @@ final class HuntPhase implements PhaseHandler {
 			if (portal == null) {
 				return PhaseTick.fail("blaze phase needs the nether, and no lit portal is nearby");
 			}
+			paths.gotoBlock(context, "portal", portal);
 			if (PhaseSupport.close(context, portal, 1.5)) {
 				return PhaseTick.cont("standing in a lit portal");
 			}
-			paths.gotoBlock(context, "portal", portal);
 			return PhaseTick.cont("pathing into a lit portal");
 		}
 		if (context.inventory().count("blaze_rod") < 6) {
@@ -58,7 +58,8 @@ final class HuntPhase implements PhaseHandler {
 	private PhaseTick hunt(PhaseContext context, String entityId, String searching) {
 		BlockPosView entity = context.world().findNearbyEntity(entityId, 48.0);
 		if (entity != null) {
-			if (PhaseSupport.close(context, entity, 4.0)) {
+			if (PhaseSupport.close(context, entity, 2.5)) {
+				context.gateway().cancel();
 				ActionResult attack = context.world().attackNearest(entityId, 6.0);
 				String detail = attack.status() == ActionResult.Status.OK ? "fighting " + entityId : attack.message();
 				return PhaseTick.cont(detail);

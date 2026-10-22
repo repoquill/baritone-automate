@@ -28,7 +28,9 @@ final class Supply {
 			"acacia_log",
 			"dark_oak_log",
 			"mangrove_log",
-			"cherry_log");
+			"cherry_log",
+			"pale_oak_log",
+			"poplar_log");
 	private static final List<String> STEMS = List.of("crimson_stem", "warped_stem");
 	private static final List<String> PLANKS = List.of(
 			"oak_planks",
@@ -39,6 +41,8 @@ final class Supply {
 			"dark_oak_planks",
 			"mangrove_planks",
 			"cherry_planks",
+			"pale_oak_planks",
+			"poplar_planks",
 			"bamboo_planks",
 			"crimson_planks",
 			"warped_planks");
@@ -135,8 +139,13 @@ final class Supply {
 	private static boolean previewWoodenPick(InventoryAccess inventory, boolean includeLogs) {
 		Map<String, Integer> counts = new HashMap<>();
 		if (includeLogs) {
-			copyCounts(inventory, counts, LOG_BLOCKS);
-			copyCounts(inventory, counts, STEMS);
+			for (String log : LOG_BLOCKS) {
+				copyWoodCounts(inventory, counts, log, log.replace("_log", "_wood"));
+			}
+			for (String stem : STEMS) {
+				copyWoodCounts(inventory, counts, stem, stem.replace("_stem", "_hyphae"));
+			}
+			copyCount(inventory, counts, "bamboo_block");
 		}
 		copyCounts(inventory, counts, PLANKS);
 		copyCount(inventory, counts, "stick");
@@ -147,10 +156,14 @@ final class Supply {
 	}
 
 	private static int logCount(InventoryAccess inventory) {
-		return inventory.countWhere(id -> {
-			String path = ItemIds.path(id);
-			return path.endsWith("_log") || path.endsWith("_stem");
-		});
+		return inventory.countWhere(id -> CraftRecipes.matches(id, "log") || ItemIds.matches(id, "bamboo_block"));
+	}
+
+	private static void copyWoodCounts(InventoryAccess inventory, Map<String, Integer> counts, String log, String wood) {
+		copyCount(inventory, counts, log);
+		copyCount(inventory, counts, wood);
+		copyCount(inventory, counts, "stripped_" + log);
+		copyCount(inventory, counts, "stripped_" + wood);
 	}
 
 	private static void copyCounts(InventoryAccess inventory, Map<String, Integer> counts, List<String> ids) {
