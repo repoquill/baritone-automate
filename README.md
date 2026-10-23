@@ -9,7 +9,7 @@ Minecraft **26.3** Fabric **客户端**模组。另装 Baritone，由本模组�
 需要你自己的客户端，本仓库不带游戏、也不带可玩的 Baritone 模组。
 
 1. 安装 Minecraft **26.3**、Fabric Loader **0.19.5 或更高**（仍须支持 26.3）、Fabric API。
-2. 把发布用的 `baritone-automate-0.1.2.jar` 放进 `mods`。这个 JAR **没有嵌套 Baritone**。
+2. 把发布用的 `baritone-automate-0.1.3.jar` 放进 `mods`。这个 JAR **没有嵌套 Baritone**。
 3. **另装自编译**的 Baritone Fabric 模组（同一次源码构建里的 `baritone-fabric-1.20.0.jar`）。`libs/baritone-api-fabric-1.20.0.jar` 只给编译用，不要把它当运行模组。步骤见 [docs/baritone-build.md](docs/baritone-build.md)。
 4. 启动客户端，进世界后按 `K` 打开操作台。没装 Baritone 时模组仍会加载，寻路按钮停用并出横幅。
 
@@ -20,7 +20,7 @@ export JAVA_HOME=/path/to/jdk-25
 ./gradlew build
 ```
 
-产物在 `build/libs/baritone-automate-0.1.2.jar`。`verifyBaritoneNotNested` 会确认里面没有 `baritone/` 类。
+产物在 `build/libs/baritone-automate-0.1.3.jar`。`verifyBaritoneNotNested` 会确认里面没有 `baritone/` 类。
 
 修复记录和验证范围见 [docs/bugfix-report.md](docs/bugfix-report.md)。操作台、设置和阶段机在静态构建与单测里已经接上。**不能把「一键通关已经能打完末影龙」当成已验收。** 进游戏联调仍要自备 MC 26.3、自编译 Baritone 和 Fabric。
 
@@ -49,7 +49,7 @@ export JAVA_HOME=/path/to/jdk-25
 ./gradlew build
 ```
 
-产物：`build/libs/baritone-automate-0.1.2.jar`。里面没有 Baritone 类。运行前把自编译的 `baritone-fabric-1.20.0.jar` 放进 mods 目录。编译 API 的步骤见 [docs/baritone-build.md](docs/baritone-build.md)。
+产物：`build/libs/baritone-automate-0.1.3.jar`。里面没有 Baritone 类。运行前把自编译的 `baritone-fabric-1.20.0.jar` 放进 mods 目录。编译 API 的步骤见 [docs/baritone-build.md](docs/baritone-build.md)。
 
 Baritone 是 LGPL-3.0，本模组源码是 MIT。另装、不打包，见 `NOTICE`。
 
