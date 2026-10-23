@@ -506,6 +506,7 @@ class RunControllerTest {
 		Harness harness = reach(RunPhase.NETHER_PORTAL);
 		harness.inventory.set("diamond", 3);
 		harness.inventory.set("stick", 2);
+		harness.inventory.set("crafting_table", 1);
 		int mines = harness.gateway.mines;
 		harness.runs.tick();
 		assertTrue(harness.inventory.count("diamond_pickaxe") >= 1);
@@ -589,6 +590,9 @@ class RunControllerTest {
 		harness.inventory.set("raw_iron", 3);
 		harness.inventory.set("stick", 2);
 		harness.inventory.set("coal", 1);
+		harness.inventory.set("crafting_table", 1);
+		harness.world.nearbyBlockId = "furnace";
+		harness.world.nearbyBlock = harness.world.pos;
 		harness.runs.tick();
 		assertEquals(3, harness.inventory.count("iron_ingot"));
 		assertEquals(0, harness.inventory.count("raw_iron"));
@@ -599,13 +603,36 @@ class RunControllerTest {
 	}
 
 	@Test
-	void ironFailsWhenFuelIsMissing() {
+	void ironContinuesWhenFuelIsMissing() {
 		Harness harness = reach(RunPhase.IRON);
 		harness.inventory.set("stone_pickaxe", 1);
 		harness.inventory.set("raw_iron", 3);
+		harness.world.nearbyBlockId = "furnace";
+		harness.world.nearbyBlock = harness.world.pos;
 		harness.runs.tick();
-		assertEquals(RunState.FAILED, harness.runs.snapshot().state());
-		assertTrue(harness.runs.snapshot().failureReason().contains("fuel"));
+		assertEquals(RunState.RUNNING, harness.runs.snapshot().state());
+		assertEquals(RunPhase.IRON, harness.runs.snapshot().phase());
+		assertTrue(harness.gateway.mines >= 1);
+		assertTrue(harness.gateway.mined.stream().anyMatch(blocks -> blocks.contains("coal_ore")
+				|| blocks.contains("deepslate_coal_ore")));
+		harness.inventory.set("coal", 1);
+		harness.runs.tick();
+		assertEquals(3, harness.inventory.count("iron_ingot"));
+	}
+
+	@Test
+	void ironMinesCobbleWhenNoFurnaceIsAvailable() {
+		Harness harness = reach(RunPhase.IRON);
+		harness.inventory.set("stone_pickaxe", 1);
+		harness.inventory.set("raw_iron", 3);
+		harness.inventory.set("coal", 1);
+		harness.inventory.set("cobblestone", 3);
+		harness.runs.tick();
+		assertEquals(RunState.RUNNING, harness.runs.snapshot().state());
+		assertEquals(RunPhase.IRON, harness.runs.snapshot().phase());
+		assertTrue(harness.gateway.mined.stream().anyMatch(blocks -> blocks.contains("cobblestone")
+				|| blocks.contains("stone")
+				|| blocks.contains("deepslate")));
 	}
 
 	@Test
@@ -829,6 +856,7 @@ class RunControllerTest {
 
 		private Harness() {
 			world.stock = inventory;
+			inventory.world = world;
 			runs = new RunController(
 					gateway,
 					inventory,
@@ -982,6 +1010,7 @@ class RunControllerTest {
 
 	private static final class FakeInventory implements InventoryAccess {
 		private final Map<String, Integer> counts = new HashMap<>();
+		FakeView world;
 		ActionResult craftResult;
 		int pendingTicks;
 		String pendingOutput;
@@ -1049,12 +1078,23 @@ class RunControllerTest {
 			if (craftResult != null) {
 				return craftResult;
 			}
-			return dev.baritoneautomate.inventory.CraftRecipes.craft(counts, outputItemId, count, true);
+			return dev.baritoneautomate.inventory.CraftRecipes.craft(counts, outputItemId, count, tableReady());
 		}
 
 		@Override
 		public ActionResult smelt(String inputItemId, int count) {
-			return dev.baritoneautomate.inventory.CraftRecipes.smelt(counts, inputItemId, count, true, true);
+			return dev.baritoneautomate.inventory.CraftRecipes.smelt(
+					counts, inputItemId, count, furnaceReady(), tableReady());
+		}
+
+		private boolean tableReady() {
+			return counts.getOrDefault("minecraft:crafting_table", 0) > 0
+					|| (world != null && world.findNearbyBlock("crafting_table", 6) != null);
+		}
+
+		private boolean furnaceReady() {
+			return counts.getOrDefault("minecraft:furnace", 0) > 0
+					|| (world != null && world.findNearbyBlock("furnace", 6) != null);
 		}
 	}
 

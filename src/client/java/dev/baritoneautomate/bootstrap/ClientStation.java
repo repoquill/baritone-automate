@@ -37,6 +37,7 @@ import net.minecraft.world.phys.Vec3;
  * is {@code useItemOn}. Those two outcomes still need a 26.3 client to confirm.
  */
 public final class ClientStation {
+	private static final int STATION_BLOCK_RADIUS = 6;
 	private static final StationPorts PORTS = new MinecraftPorts();
 
 	private ClientStation() {
@@ -82,7 +83,7 @@ public final class ClientStation {
 		@Override
 		public boolean blockNearby(String blockId) {
 			LocalPlayer player = player();
-			return player != null && nearbyBlock(player, blockId, 4) != null;
+			return player != null && nearbyBlock(player, blockId, STATION_BLOCK_RADIUS) != null;
 		}
 
 		@Override
@@ -151,8 +152,9 @@ public final class ClientStation {
 			if (player == null || Minecraft.getInstance().gameMode == null) {
 				return ActionResult.unavailable("no world");
 			}
-			if (!player.containerMenu.getCarried().isEmpty()) {
-				return ActionResult.unavailable("container cursor is busy");
+			ActionResult recovered = recoverCarriedCursor(player);
+			if (recovered != null) {
+				return recovered;
 			}
 			int cells = switch (menu()) {
 				case PLAYER -> 4;
@@ -175,8 +177,9 @@ public final class ClientStation {
 			if (player == null || Minecraft.getInstance().gameMode == null) {
 				return ActionResult.unavailable("no world");
 			}
-			if (!player.containerMenu.getCarried().isEmpty()) {
-				return ActionResult.unavailable("container cursor is busy");
+			ActionResult recovered = recoverCarriedCursor(player);
+			if (recovered != null) {
+				return recovered;
 			}
 			int source = findInventorySlot(player, token);
 			if (source < 0) {
@@ -190,9 +193,14 @@ public final class ClientStation {
 									>= player.containerMenu.getSlot(menuSlot).getItem().getMaxStackSize()))) {
 				return ActionResult.unavailable("container input slot is busy");
 			}
+			Slot target = player.containerMenu.getSlot(menuSlot);
+			int before = target.getItem().isEmpty() ? 0 : target.getItem().getCount();
 			click(player, source, 0, ContainerInput.PICKUP);
 			click(player, menuSlot, 1, ContainerInput.PICKUP);
 			click(player, source, 0, ContainerInput.PICKUP);
+			if (!placedInSlot(target, token, before)) {
+				return ActionResult.pending("waiting for " + ItemIds.path(token));
+			}
 			return ActionResult.ok("placed " + ItemIds.path(token));
 		}
 
@@ -211,7 +219,7 @@ public final class ClientStation {
 			if (player == null || Minecraft.getInstance().gameMode == null) {
 				return ActionResult.unavailable("no world");
 			}
-			BlockPos nearby = nearbyBlock(player, blockId, 4);
+			BlockPos nearby = nearbyBlock(player, blockId, STATION_BLOCK_RADIUS);
 			if (nearby == null) {
 				return ActionResult.missing("no " + ItemIds.path(blockId) + " nearby");
 			}
@@ -244,6 +252,41 @@ public final class ClientStation {
 				player.closeContainer();
 			}
 		}
+	}
+
+	private static boolean placedInSlot(Slot slot, String token, int countBefore) {
+		ItemStack stack = slot.getItem();
+		if (stack.isEmpty()) {
+			return false;
+		}
+		if (!CraftRecipes.matches(itemId(stack), token)) {
+			return false;
+		}
+		return stack.getCount() > countBefore;
+	}
+
+	private static ActionResult recoverCarriedCursor(LocalPlayer player) {
+		ItemStack carried = player.containerMenu.getCarried();
+		if (carried.isEmpty()) {
+			return null;
+		}
+		int empty = findEmptyPlayerSlot(player);
+		if (empty < 0) {
+			return ActionResult.pending("waiting for inventory space");
+		}
+		click(player, empty, 0, ContainerInput.PICKUP);
+		return ActionResult.pending("clearing container cursor");
+	}
+
+	private static int findEmptyPlayerSlot(LocalPlayer player) {
+		AbstractContainerMenu menu = player.containerMenu;
+		for (int index = 0; index < menu.slots.size(); index++) {
+			Slot slot = menu.getSlot(index);
+			if (slot.container == player.getInventory() && slot.getItem().isEmpty()) {
+				return index;
+			}
+		}
+		return -1;
 	}
 
 	private static boolean slotEmpty(int index) {

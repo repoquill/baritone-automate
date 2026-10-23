@@ -121,6 +121,13 @@ final class Supply {
 	}
 
 	static PhaseTick smelt(PhaseContext context, String inputId, int count) {
+		return smelt(context, inputId, count, false);
+	}
+
+	/**
+	 * @param shortageContinues MISSING and UNAVAILABLE keep the run going so the phase can gather fuel or retry.
+	 */
+	static PhaseTick smelt(PhaseContext context, String inputId, int count, boolean shortageContinues) {
 		stopMine(context);
 		int before = context.inventory().count("iron_ingot");
 		ActionResult result = context.inventory().smelt(inputId, count);
@@ -133,7 +140,21 @@ final class Supply {
 		if (result.status() == ActionResult.Status.OK) {
 			return PhaseTick.fail("smelt reported success but no iron ingot was added");
 		}
+		if (shortageContinues && recoverableShortage(result.status())) {
+			return PhaseTick.cont(result.message());
+		}
 		return PhaseTick.fail(result.message());
+	}
+
+	static long smeltFuelCapacity(InventoryAccess inventory) {
+		long total = inventory.count("coal") * 16L + inventory.count("charcoal") * 16L + inventory.count("stick");
+		total += inventory.countWhere(id -> CraftRecipes.matches(id, "fuel_planks")) * 3L;
+		total += inventory.countWhere(id -> CraftRecipes.matches(id, "fuel_log")) * 3L;
+		return total;
+	}
+
+	static boolean hasSmeltFuel(InventoryAccess inventory, int smeltItems) {
+		return smeltFuelCapacity(inventory) >= (long) smeltItems * 2L;
 	}
 
 	private static boolean previewWoodenPick(InventoryAccess inventory, boolean includeLogs) {
